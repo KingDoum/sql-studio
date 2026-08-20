@@ -1,0 +1,22 @@
+# electron-builder 打包配置（任务 13 会完善图标与安装包细节）
+appId: com.sqlstudio.app
+productName: SQL Studio
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**/*
+  - package.json
+asar: true
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: SQL Studio

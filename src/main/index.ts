@@ -1,8 +1,31 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+/**
+ * 主进程入口。
+ *
+ * 启动时序：
+ *   1. app.whenReady() → 初始化所有服务（Security / MetadataStore / ConnectionManager / FavoritesStore）
+ *   2. registerIpc() → 注册全部 27 个 IPC handler
+ *   3. createWindow() → 创建 Electron 窗口，加载 preload + 渲染进程
+ */
+import { app, BrowserWindow, ipcMain, safeStorage } from 'electron';
 import path from 'node:path';
-import { IPC_CHANNELS } from '../shared/ipc-contract';
+import mysql from 'mysql2/promise';
+import { Security } from './services/security';
+import { MetadataStore } from './services/metadata-store';
+import { ConnectionManager, type Mysql2Factory } from './services/connection-manager';
+import { FavoritesStore } from './services/favorites-store';
+import { registerIpc } from './ipc';
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
+
+/** mysql2 真实工厂（注入 ConnectionManager）。 */
+const mysqlFactory: Mysql2Factory = {
+  createPool: (config) => mysql.createPool(config) as never,
+  createConnection: async (config) => {
+    const conn = await mysql.createConnection(config);
+    (conn as { release?: () => void }).release = () => void 0;
+    return conn as never;
+  },
+};
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -33,9 +56,30 @@ function createWindow(): BrowserWindow {
 }
 
 app.whenReady().then(() => {
-  // 冒烟通道：渲染进程 ping 返回 pong
-  ipcMain.handle(IPC_CHANNELS.ping, () => 'pong');
+  // 1. 初始化各服务
+  const security = new Security();
+  const userDataPath = app.getPath('userData');
+  const dbPath = path.join(userDataPath, 'sql-studio.db');
 
+  const metadataStore = new MetadataStore({
+    dbPath,
+    security,
+  });
+
+  const connectionManager = new ConnectionManager(mysqlFactory);
+  const favoritesStore = new FavoritesStore(path.join(userDataPath, 'queries'));
+
+  // 2. 注册全部 IPC handler
+  registerIpc(
+    {
+      connectionManager,
+      metadataStore,
+      favoritesStore,
+    },
+    ipcMain,
+  );
+
+  // 3. 创建窗口
   createWindow();
 
   app.on('activate', () => {

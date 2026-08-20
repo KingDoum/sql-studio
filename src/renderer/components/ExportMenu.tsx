@@ -1,13 +1,19 @@
 /**
- * ExportMenu（任务 11 ui-export-history）。
- * 导出按钮（下拉菜单）：导出 Excel（全量/当前筛选）、导出 SQL INSERT。
+ * ExportMenu（任务 11 ui-export-history，体验优化 §14 增强）。
+ * 导出按钮（下拉菜单）：导出 Excel（全量）、导出 SQL INSERT。
  * 数据来自 workspace.execution 的当前活跃结果集。
- * 路径通过 window.prompt 输入（主进程暂未接 dialog，V2 可改）。
+ *
+ * 体验优化（2026-08-20）：
+ *  - 路径选择改用 Electron 原生保存对话框（dialog:showSaveDialog），
+ *    替代 window.prompt（Electron 中 prompt 返回 null → 导出静默失败）。
+ *  - 导出目录持久化到 settings (lastExportDir)，下次导出默认定位到该目录。
  */
-import { useState, useRef, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Download } from 'lucide-react';
 import { useWorkspace } from '@renderer/store/workspace';
 import type { ExportExcelRequest, ExportInsertRequest } from '@shared/types';
+
+const LAST_EXPORT_DIR_KEY = 'lastExportDir';
 
 export function ExportMenu() {
   const execution = useWorkspace((s) => s.execution);
@@ -18,25 +24,55 @@ export function ExportMenu() {
   const resultSet = execution?.result?.resultSets[0];
   const canExport = !!resultSet && resultSet.rows.length > 0;
 
-  const close = useCallback(() => setOpen(false), []);
+  // 读取上一次导出目录（持久化：settings 表）
+  useEffect(() => {
+    void window.sqlStudio['settings:get']({ key: LAST_EXPORT_DIR_KEY }).then((dir) => {
+      if (dir) lastDirRef.current = dir;
+    });
+  }, []);
 
-  const exportExcel = async (mode: 'full' | 'filtered') => {
+  const lastDirRef = useRef<string>('');
+
+  const close = () => setOpen(false);
+
+  /** 弹出原生保存对话框，返回路径；取消返回 null。 */
+  const pickSavePath = async (title: string, filename: string, filters: Array<{ name: string; extensions: string[] }>): Promise<string | null> => {
+    const sep = process.platform === 'win32' ? '\\' : '/';
+    const defaultPath = lastDirRef.current ? `${lastDirRef.current.replace(/[\\/]$/, '')}${sep}${filename}` : filename;
+    try {
+      const filePath = await window.sqlStudio['dialog:showSaveDialog']({ title, defaultPath, filters });
+      return filePath;
+    } catch (err) {
+      window.alert(`无法打开保存对话框：${err instanceof Error ? err.message : String(err)}`);
+      return null;
+    }
+  };
+
+  /** 导出成功后：记住目录 + 用户可见反馈。 */
+  const onExportSuccess = (filePath: string) => {
+    const dir = filePath.slice(0, Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\')));
+    if (dir) {
+      lastDirRef.current = dir;
+      void window.sqlStudio['settings:set']({ key: LAST_EXPORT_DIR_KEY, value: dir });
+    }
+    window.alert(`导出成功：\n${filePath}`);
+  };
+
+  const exportExcel = async () => {
     if (!resultSet) return;
-    const filePath = window.prompt('输入导出路径（.xlsx）');
+    const filePath = await pickSavePath('导出 Excel', '导出结果.xlsx', [
+      { name: 'Excel 文件', extensions: ['xlsx'] },
+    ]);
     if (!filePath) return;
     setExporting(true);
     try {
-      // 筛选过的行从网格 visibleRows 获取？但 ExportMenu 无网格引用。
-      // V1 总是导出全量结果集（包含筛选前的行）。
-      // 若要导出筛选结果，需 ResultGrid 向上传递 filteredRows → workspace store 暂存。
-      // 当前 V1 仅导出全量。
       const req: ExportExcelRequest = {
         options: { filePath: filePath.endsWith('.xlsx') ? filePath : `${filePath}.xlsx` },
         columns: resultSet.columns,
         rows: resultSet.rows,
       };
       await window.sqlStudio['export:excel'](req);
-      window.alert(`导出成功：${filePath}`);
+      onExportSuccess(req.options.filePath);
     } catch (err) {
       window.alert(`导出失败：${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -49,7 +85,9 @@ export function ExportMenu() {
     if (!resultSet) return;
     const tableName = window.prompt('目标表名');
     if (!tableName) return;
-    const filePath = window.prompt('输入导出路径（.sql）');
+    const filePath = await pickSavePath('导出 SQL INSERT', `${tableName}.sql`, [
+      { name: 'SQL 文件', extensions: ['sql'] },
+    ]);
     if (!filePath) return;
     setExporting(true);
     try {
@@ -59,7 +97,7 @@ export function ExportMenu() {
         rows: resultSet.rows,
       };
       await window.sqlStudio['export:insert'](req);
-      window.alert(`导出成功：${filePath}`);
+      onExportSuccess(filePath);
     } catch (err) {
       window.alert(`导出失败：${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -86,7 +124,7 @@ export function ExportMenu() {
             <button
               className="export-item"
               disabled={exporting}
-              onClick={() => void exportExcel('full')}
+              onClick={() => void exportExcel()}
             >
               导出 Excel（全量）
             </button>

@@ -81,6 +81,28 @@ export function isTableContext(prefix: string): boolean {
   return words.some((w) => TABLE_CONTEXT_KEYWORDS.has(w));
 }
 
+/**
+ * 解析前缀中的表别名映射：`别名(小写) → 表名`。
+ * 支持 `FROM users u`、`FROM users AS u`、`JOIN orders o`、`INTO t x` 等写法，
+ * 也支持反引号包裹的表名/别名。用于「输入别名. 时联想对应表字段」（体验优化）。
+ */
+export function extractTableAliases(prefix: string): Record<string, string> {
+  const aliases: Record<string, string> = {};
+  // 关键字 + 表名（反引号或普通标识符）+ 可选 AS + 别名（反引号或普通标识符）
+  // 表名和别名的反引号组优先匹配完整反引号段
+  const re = /(?:FROM|JOIN|INTO|UPDATE|TABLE)\s+(?:`([^`]+)`|([\w$]+))(?:\s+AS\s+|\s+)(?:`([^`]+)`|([\w$]+))(?=\s|$)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(prefix)) !== null) {
+    const table = m[1] ?? m[2] ?? '';
+    const aliasRaw = m[3] ?? m[4] ?? '';
+    const alias = aliasRaw.replace(/`/g, '');
+    if (alias && alias.toLowerCase() !== table.toLowerCase()) {
+      aliases[alias.toLowerCase()] = table;
+    }
+  }
+  return aliases;
+}
+
 /** 是否以 `.` 结尾（需要补字段/表）。 */
 export function isDotEnding(prefix: string): boolean {
   return /\.\s*$/.test(prefix);
@@ -138,6 +160,29 @@ export class SchemaCompletionProvider implements CompletionProvider {
         if (this.snapshot.tables.some((t) => t.name === qualifier)) {
           // 表名. → 该表字段
           const cols = this.snapshot.columnsByTable[qualifier] ?? [];
+          return sortItems(
+            dedupe(
+              filterByWord(
+                [
+                  ...base,
+                  ...cols.map((c) => ({
+                    label: c.name,
+                    category: 'column' as CompletionCategory,
+                    insertText: c.name,
+                    detail: c.type,
+                    score: 4,
+                  })),
+                ],
+                word,
+              ),
+            ),
+          );
+        }
+        // 别名. → 该表字段（体验优化：FROM users u 之后 u. 联想 users 字段）
+        const aliases = extractTableAliases(prefix);
+        const tableForAlias = aliases[qualifier.toLowerCase()];
+        if (tableForAlias && this.snapshot.tables.some((t) => t.name === tableForAlias)) {
+          const cols = this.snapshot.columnsByTable[tableForAlias] ?? [];
           return sortItems(
             dedupe(
               filterByWord(

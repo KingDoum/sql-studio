@@ -90,6 +90,20 @@ export function registerIpc(deps: IpcDeps, ipcMain: IpcMain): void {
     if (!c) throw new Error(`连接不存在: ${arg.id}`);
     return c;
   });
+  // 测试已保存连接（主进程解密取配置，渲染进程不接触密码，铁律 R6）
+  handle(IPC_CHANNELS['connections:testById'], async (arg) => {
+    const config = deps.metadataStore.getConnectionConfig(arg.id);
+    if (!config) throw new Error(`连接不存在: ${arg.id}`);
+    return deps.connectionManager.testConnection({
+      name: config.name,
+      host: config.host,
+      port: config.port,
+      user: config.user,
+      password: config.password,
+      database: config.database,
+      charset: config.charset,
+    });
+  });
 
   // schema 浏览
   // 缓存 SchemaCache 实例（按 connectionId），避免每次 IPC 调用新建实例
@@ -136,12 +150,14 @@ export function registerIpc(deps: IpcDeps, ipcMain: IpcMain): void {
   });
 
   // 查询执行
-  // 取消机制：queryId = connectionId + 自增序号；AbortController 映射
+  // 取消机制：queryId = connectionId + clientQueryId（渲染进程生成）或自增序号；AbortController 映射
   const queryAborters = new Map<string, AbortController>();
   let querySeq = 0;
   handle(IPC_CHANNELS['query:execute'], async (arg) => {
     const abortController = new AbortController();
-    const queryId = `${arg.connectionId}:${++querySeq}`;
+    const queryId = arg.clientQueryId
+      ? `${arg.connectionId}:${arg.clientQueryId}`
+      : `${arg.connectionId}:${++querySeq}`;
     queryAborters.set(queryId, abortController);
     try {
       const executor = makeExecutor(deps, arg.connectionId);
@@ -227,5 +243,40 @@ export function registerIpc(deps: IpcDeps, ipcMain: IpcMain): void {
   handle(IPC_CHANNELS['settings:setAiConfig'], (arg) => {
     deps.metadataStore.setAiConfig(arg);
     return { saved: true };
+  });
+
+  // ── 通用设置（导出目录等持久化）──
+  handle(IPC_CHANNELS['settings:get'], (arg) => deps.metadataStore.getSetting(arg.key));
+  handle(IPC_CHANNELS['settings:set'], (arg) => {
+    deps.metadataStore.setSetting(arg.key, arg.value);
+    return { saved: true };
+  });
+
+  // ── 原生保存对话框（Electron dialog，替代 window.prompt）──
+  // 动态 require electron 避免测试环境顶层 import 失败
+  handle(IPC_CHANNELS['dialog:showSaveDialog'], async (arg) => {
+    const electron = require('electron') as typeof import('electron');
+    const win = electron.BrowserWindow.getFocusedWindow() ?? electron.BrowserWindow.getAllWindows()[0];
+    const result = await electron.dialog.showSaveDialog(win, {
+      title: arg.title,
+      defaultPath: arg.defaultPath,
+      filters: arg.filters,
+    });
+    if (result.canceled || !result.filePath) return null;
+    return result.filePath;
+  });
+
+  // ── 原生打开文件对话框 ──
+  handle(IPC_CHANNELS['dialog:showOpenDialog'], async (arg) => {
+    const electron = require('electron') as typeof import('electron');
+    const win = electron.BrowserWindow.getFocusedWindow() ?? electron.BrowserWindow.getAllWindows()[0];
+    const result = await electron.dialog.showOpenDialog(win, {
+      title: arg.title,
+      defaultPath: arg.defaultPath,
+      filters: arg.filters,
+      properties: ['openFile'],
+    });
+    if (result.canceled || !result.filePaths?.length) return null;
+    return result.filePaths[0]!;
   });
 }

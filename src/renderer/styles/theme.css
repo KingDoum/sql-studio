@@ -139,6 +139,30 @@ textarea {
   transition: background 0.12s, border-color 0.12s;
 }
 
+/* 连接状态指示圆点 */
+.conn-status {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.conn-status-ok {
+  background: var(--success);
+  box-shadow: 0 0 4px var(--success);
+}
+
+.conn-status-error {
+  background: var(--danger);
+  box-shadow: 0 0 4px var(--danger);
+}
+
+.conn-status-testing {
+  background: var(--warning);
+  animation: pulse 0.8s ease-in-out infinite;
+}
+
 .conn-list li:hover {
   background: var(--bg-hover);
 }
@@ -440,8 +464,60 @@ textarea {
   font-size: 10px;
 }
 
+.col-list .col-name {
+  color: var(--text);
+  font-size: 11px;
+}
+
+.col-list .col-comment {
+  color: var(--text-dim);
+  font-size: 10px;
+  font-style: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 110px;
+}
+
 .col-list li.pk em {
   color: var(--warning);
+}
+
+/* ── 右键菜单 ── */
+.context-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+}
+
+.context-menu {
+  position: fixed;
+  z-index: 100;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-panel);
+  min-width: 120px;
+  padding: 4px;
+}
+
+.context-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 5px 12px;
+  font-size: 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.context-item:hover {
+  background: var(--bg-hover);
+  color: var(--accent-bright);
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -737,6 +813,17 @@ textarea {
   background: var(--accent-bright);
 }
 
+.sql-editor-btn.sql-editor-stop {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+  font-weight: 500;
+}
+
+.sql-editor-btn.sql-editor-stop:hover {
+  opacity: 0.85;
+}
+
 .sql-editor-wrap {
   flex: 1;
   min-height: 0;
@@ -855,7 +942,7 @@ textarea {
 }
 
 .grid-header {
-  display: flex;
+  display: grid;
   border-bottom: 1px solid var(--border);
   background: var(--bg-panel);
   flex-shrink: 0;
@@ -874,6 +961,25 @@ textarea {
   transition: background 0.1s;
   box-sizing: border-box;
   border-right: 1px solid var(--border);
+  position: relative;
+  overflow: hidden;
+}
+
+/* 列宽拖拽把手（表头最右侧） */
+.grid-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 2;
+}
+
+.grid-resize-handle:hover,
+.grid-resize-handle:active {
+  background: var(--accent-dim);
+  opacity: 0.6;
 }
 
 .grid-header-cell:hover {
@@ -904,7 +1010,7 @@ textarea {
 }
 
 .grid-filter {
-  display: flex;
+  display: grid;
   border-bottom: 1px solid var(--border);
   background: var(--bg-panel);
   flex-shrink: 0;
@@ -919,6 +1025,7 @@ textarea {
   background: var(--bg);
   color: var(--text);
   outline: none;
+  width: 100%;
   box-sizing: border-box;
 }
 
@@ -938,7 +1045,7 @@ textarea {
 }
 
 .grid-row {
-  display: flex;
+  display: grid;
   position: absolute;
   left: 0;
   right: 0;

@@ -24,6 +24,8 @@ import type {
   AiCompletionRequest,
   AiCompletionResponse,
   AiConfig,
+  ShowSaveDialogOptions,
+  ShowOpenDialogOptions,
 } from './types';
 
 /** channel 常量。新增业务 channel 必须在此登记为唯一来源。 */
@@ -37,6 +39,7 @@ export const IPC_CHANNELS = {
   'connections:remove': 'connections:remove',
   'connections:test': 'connections:test',
   'connections:get': 'connections:get',
+  'connections:testById': 'connections:testById',
 
   // schema 浏览
   'schema:databases': 'schema:databases',
@@ -72,6 +75,14 @@ export const IPC_CHANNELS = {
   // V2 AI 设置
   'settings:getAiConfig': 'settings:getAiConfig',
   'settings:setAiConfig': 'settings:setAiConfig',
+
+  // 通用设置
+  'settings:get': 'settings:get',
+  'settings:set': 'settings:set',
+
+  // 原生对话框
+  'dialog:showSaveDialog': 'dialog:showSaveDialog',
+  'dialog:showOpenDialog': 'dialog:showOpenDialog',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
@@ -88,6 +99,7 @@ export interface IpcRequestMap {
   'connections:remove': { id: string };
   'connections:test': ConnectionInput;
   'connections:get': { id: string };
+  'connections:testById': { id: string };
 
   'schema:databases': { connectionId: string };
   'schema:tables': { connectionId: string; database: string };
@@ -117,6 +129,16 @@ export interface IpcRequestMap {
   // V2 AI 设置
   'settings:getAiConfig': void;
   'settings:setAiConfig': AiConfig;
+
+  // 通用设置
+  'settings:get': { key: string };
+  'settings:set': { key: string; value: string };
+
+  // 原生保存对话框（导出/另存为共用）
+  'dialog:showSaveDialog': ShowSaveDialogOptions;
+
+  // 原生打开文件对话框
+  'dialog:showOpenDialog': ShowOpenDialogOptions;
 }
 
 export interface IpcResponseMap {
@@ -127,6 +149,7 @@ export interface IpcResponseMap {
   'connections:remove': { removed: boolean };
   'connections:test': TestConnectionResult;
   'connections:get': ConnectionSummary;
+  'connections:testById': TestConnectionResult;
 
   'schema:databases': string[];
   'schema:tables': import('./types').TableMeta[];
@@ -156,6 +179,16 @@ export interface IpcResponseMap {
   // V2 AI 设置
   'settings:getAiConfig': AiConfig | null;
   'settings:setAiConfig': { saved: boolean };
+
+  // 通用设置
+  'settings:get': string | null;
+  'settings:set': { saved: boolean };
+
+  // 原生保存对话框：返回文件路径（取消返回 null）
+  'dialog:showSaveDialog': string | null;
+
+  // 原生打开文件对话框：返回文件路径（取消返回 null）
+  'dialog:showOpenDialog': string | null;
 }
 
 /** 便捷类型：某 channel 的请求参数类型。 */

@@ -31,12 +31,23 @@ export interface ExecutionRecord {
   executedAt: number;
 }
 
+/** 查询执行中状态（停止按钮数据源）。 */
+export interface ExecutingState {
+  /** 发起查询的标签 id。 */
+  tabId: string;
+  connectionId: string;
+  /** 渲染进程生成的查询 id（对应主进程 query:cancel 的 queryId）。 */
+  clientQueryId: string;
+}
+
 interface WorkspaceState {
   currentConnectionId: string | null;
   tabs: EditorTab[];
   activeTabId: string | null;
   /** 最近一次执行记录（任务 10 结果面板数据源）。 */
   execution: ExecutionRecord | null;
+  /** 当前执行中的查询（体验优化：停止按钮）。 */
+  executing: ExecutingState | null;
 
   setConnection(id: string | null): void;
 
@@ -52,6 +63,7 @@ interface WorkspaceState {
   /** 保存成功后标记干净并记录路径。 */
   markSaved(id: string, filePath: string): void;
   setExecution(rec: ExecutionRecord): void;
+  setExecuting(state: ExecutingState | null): void;
 }
 
 export const useWorkspace = create<WorkspaceState>((set, get) => ({
@@ -59,6 +71,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   tabs: [],
   activeTabId: null,
   execution: null,
+  executing: null,
 
   setConnection: (id) => set({ currentConnectionId: id }),
 
@@ -115,7 +128,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }));
   },
 
-  setExecution: (rec) => set({ execution: rec }),
+  setExecution: (rec) => set({ execution: rec, executing: null }),
+  setExecuting: (state) => set({ executing: state }),
 }));
 
 /** 取活跃标签（便捷选择器）。 */

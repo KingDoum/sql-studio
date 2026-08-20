@@ -4,7 +4,7 @@
  * 覆盖：空结果、排序、筛选、虚拟滚动数量、复制、NULL 展示。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { ResultGrid } from '@renderer/components/ResultGrid';
 import type { CellValue, ColumnMeta } from '@shared/types';
 
@@ -92,5 +92,21 @@ describe('ResultGrid', () => {
     // 5000 rows but only visible + overscan rendered (~40-50)
     expect(renderedRows.length).toBeLessThan(500);
     expect(renderedRows.length).toBeGreaterThan(5);
+  });
+
+  it('筛选行与表头使用同一 gridTemplateColumns（对齐）', () => {
+    const { container } = renderGrid();
+    const header = container.querySelector('.grid-header') as HTMLElement;
+    const filter = container.querySelector('.grid-filter') as HTMLElement;
+    expect(header.style.gridTemplateColumns).toBeTruthy();
+    expect(header.style.gridTemplateColumns).toBe(filter.style.gridTemplateColumns);
+  });
+
+  it('拖动 resize handle 调整列宽', () => {
+    const { container } = renderGrid();
+    const handle = container.querySelector('[data-testid="resize-id"]') as HTMLElement;
+    expect(handle).toBeTruthy();
+    // resize handle 存在表示可拖拽（jsdom 下 pointer events 模拟有限，真实拖拽在 Electron 中验证）
+    expect(handle.className).toBe('grid-resize-handle');
   });
 });

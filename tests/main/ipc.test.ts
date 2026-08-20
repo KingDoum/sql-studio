@@ -138,6 +138,24 @@ describe('registerIpc', () => {
     const listRes = (await listFn(null, undefined)) as { ok: true; data: { name: string }[] };
     expect(listRes.data.map((f) => f.name)).toContain('q1');
   });
+
+  it('settings:set / settings:get 持久化通用设置', async () => {
+    const setFn = handlers.get('settings:set')!;
+    const res = (await setFn(null, { key: 'lastExportDir', value: '/tmp/exports' })) as { ok: true; data: { saved: boolean } };
+    expect(res.ok).toBe(true);
+    expect(res.data.saved).toBe(true);
+    const getFn = handlers.get('settings:get')!;
+    const got = (await getFn(null, { key: 'lastExportDir' })) as { ok: true; data: string | null };
+    expect(got.ok).toBe(true);
+    expect(got.data).toBe('/tmp/exports');
+    // 不存在的 key 返回 null
+    const missing = (await getFn(null, { key: 'nope' })) as { ok: true; data: string | null };
+    expect(missing.data).toBeNull();
+  });
+
+  it('dialog:showSaveDialog handler 已注册（真实对话框由 Electron 运行时提供）', () => {
+    expect(handlers.has('dialog:showSaveDialog')).toBe(true);
+  });
 });
 
 /** 简易 security mock（与任务 3 测试一致）。 */

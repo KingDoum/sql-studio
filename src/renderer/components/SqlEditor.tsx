@@ -12,7 +12,7 @@
  * 测试策略：@monaco-editor/react 在 jsdom 中无法完整加载，
  * 本组件在测试中通过 vi.mock 替换为 stub textarea（纯逻辑测试在 sql-utils / sql-completion / monaco-language 中覆盖）。
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import Editor, { type BeforeMount, type OnMount } from '@monaco-editor/react';
 import { format } from 'sql-formatter';
 import { Brain } from 'lucide-react';
@@ -29,16 +29,27 @@ import {
   type AiProviderState,
 } from '@renderer/lib/ai-provider';
 
+/** 编辑器暴露给父组件的方法（体验优化：双击字段插入等）。 */
+export interface SqlEditorHandle {
+  /** 在光标位置插入文本（聚焦后执行，若编辑器无焦点则追加到末尾）。 */
+  insertTextAtCursor(text: string): void;
+}
+
 export interface SqlEditorProps {
   tab: EditorTab;
   connectionId: string | null;
   aiSettingsVersion?: number;
+  isExecuting?: boolean;
   onSqlChange(sql: string): void;
   onExecute(sql: string, database?: string): void;
+  onCancelQuery?(): void;
   onOpenAiSettings?(): void;
 }
 
 const MAX_TABLES_FETCH = 50;
+
+/** 系统库（不可作为默认执行库）。 */
+const SYSTEM_DATABASES = new Set(['information_schema', 'mysql', 'performance_schema', 'sys']);
 
 // 模块级补全 provider 注册守卫（只注册一次，避免 key={tab.id} 切换导致重复注册）
 let completionProviderRegistered = false;
@@ -64,7 +75,9 @@ async function fetchSchemaSnapshot(
       connectionId,
     });
     if (!databases.length) return null;
-    const database = defaultDb && databases.includes(defaultDb) ? defaultDb : databases[0];
+    // 默认库优先级：连接配置默认库 > 第一个非系统用户库（跳过 information_schema 等系统库）
+    const fallbackDb = databases.find((d) => !SYSTEM_DATABASES.has(d)) ?? databases[0];
+    const database = defaultDb && databases.includes(defaultDb) ? defaultDb : fallbackDb;
     const tables: TableMeta[] = await window.sqlStudio['schema:tables']({
       connectionId,
       database,
@@ -90,14 +103,19 @@ async function fetchSchemaSnapshot(
   }
 }
 
-export function SqlEditor({
+export const SqlEditor = React.forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor(
+  {
   tab,
   connectionId,
   aiSettingsVersion = 0,
+  isExecuting = false,
   onSqlChange,
   onExecute,
+  onCancelQuery,
   onOpenAiSettings,
-}: SqlEditorProps) {
+  }: SqlEditorProps,
+  ref: React.Ref<SqlEditorHandle>,
+) {
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
   const providerRef = useRef<SchemaCompletionProvider | null>(null);
@@ -169,12 +187,26 @@ export function SqlEditor({
     return stmt || tab.sql;
   }, [tab.sql]);
 
-  const handleExecute = useCallback(() => {
+  const handleExecute = useCallback(async () => {
+    if (isExecuting) return;
     const sql = getExecuteSql();
     if (!sql) return;
-    const db = snapshotRef.current?.database;
+    let db = snapshotRef.current?.database;
+    // 兜底：snapshot 未加载完或连接无默认库时，从连接配置取或自动选第一个用户库
+    if (!db && connectionId) {
+      try {
+        const conn = await window.sqlStudio['connections:get']({ id: connectionId });
+        if (conn.database) db = conn.database;
+      } catch { /* 连接不存在 */ }
+      if (!db) {
+        try {
+          const dbs = await window.sqlStudio['schema:databases']({ connectionId });
+          db = dbs.find((d) => !SYSTEM_DATABASES.has(d)) ?? dbs[0];
+        } catch { /* schema 不可用 */ }
+      }
+    }
     onExecute(sql, db);
-  }, [getExecuteSql, onExecute]);
+  }, [getExecuteSql, onExecute, connectionId, isExecuting]);
 
   // 格式化
   const handleFormat = useCallback(() => {
@@ -279,6 +311,41 @@ const beforeMount: BeforeMount = useCallback((monaco) => {
     editor.focus();
   }, []);
 
+  // 暴露 insertTextAtCursor 给父组件（体验优化：双击字段插入）
+  useImperativeHandle(
+    ref,
+    () => ({
+      insertTextAtCursor(text: string) {
+        const editor = editorRef.current;
+        if (!editor) return;
+        const sel = editor.getSelection();
+        let range: {
+          startLineNumber: number;
+          startColumn: number;
+          endLineNumber: number;
+          endColumn: number;
+        };
+        if (sel && !sel.isEmpty()) {
+          // 有选区 → 替换选区
+          range = sel as unknown as typeof range;
+        } else {
+          // 无选区 → 在光标位置插入
+          const pos = editor.getPosition();
+          if (!pos) return;
+          range = {
+            startLineNumber: pos.lineNumber,
+            startColumn: pos.column,
+            endLineNumber: pos.lineNumber,
+            endColumn: pos.column,
+          };
+        }
+        editor.executeEdits('sql-studio.insert-field', [{ range, text }]);
+        editor.focus();
+      },
+    }),
+    [],
+  );
+
   return (
     <div className="sql-editor-container">
       <div className="sql-editor-toolbar">
@@ -305,20 +372,30 @@ const beforeMount: BeforeMount = useCallback((monaco) => {
         >
           <Brain size={13} /> AI
         </button>
-        <button
-          className="sql-editor-btn sql-editor-run"
-          title="执行 (Ctrl+Enter)"
-          onClick={handleExecute}
-        >
-          ▶ 执行
-        </button>
+        {isExecuting ? (
+          <button
+            className="sql-editor-btn sql-editor-stop"
+            title="停止执行"
+            onClick={onCancelQuery}
+          >
+            ⏹ 停止
+          </button>
+        ) : (
+          <button
+            className="sql-editor-btn sql-editor-run"
+            title="执行 (Ctrl+Enter)"
+            onClick={handleExecute}
+          >
+            ▶ 执行
+          </button>
+        )}
       </div>
       <div className="sql-editor-wrap">
         <Editor
-          key={tab.id}
+          path={tab.id}
           language="sql"
           theme="sql-studio-dark"
-          value={tab.sql}
+          defaultValue={tab.sql}
           beforeMount={beforeMount}
           onMount={onMount}
           onChange={(val) => {
@@ -344,7 +421,7 @@ const beforeMount: BeforeMount = useCallback((monaco) => {
       </div>
     </div>
   );
-}
+});
 
 // ── 辅助 ──
 

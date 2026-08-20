@@ -15,6 +15,10 @@ export interface ObjectExplorerProps {
   onPreviewTable?: (database: string, table: string) => void;
   /** 双击表时自动生成 SELECT 语句（任务 8 验收：双击表生成 SELECT 到编辑器）。 */
   onOpenTable?: (database: string, table: string) => void;
+  /** 双击字段时插入到编辑器光标处（体验优化 §14）。 */
+  onInsertColumn?: (database: string, table: string, column: string) => void;
+  /** 右键菜单查看 DDL（SHOW CREATE TABLE 结果）。 */
+  onDdlTable?: (database: string, table: string) => void;
 }
 
 /** 表节点：共享类型 TableMeta + 懒加载的字段列表（columns 不在 TableMeta 内，避免污染唯一来源）。 */
@@ -22,13 +26,15 @@ type TableNode = TableMeta & { columns?: ColumnMeta[] };
 /** 库节点：库名 + 懒加载的表列表。 */
 type DbNode = { name: string; tables?: TableNode[] };
 
-export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable }: ObjectExplorerProps) {
+export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable, onInsertColumn, onDdlTable }: ObjectExplorerProps) {
   const [databases, setDatabases] = useState<DbNode[]>([]);
   const [expandedDb, setExpandedDb] = useState<string | null>(null);
   const [expandedTable, setExpandedTable] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const requestIdRef = useRef(0);
+  /** 右键菜单状态。 */
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; db: string; table: string } | null>(null);
 
   useEffect(() => {
     const reqId = ++requestIdRef.current;
@@ -98,6 +104,14 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable }: Ob
     if (next && !t.columns) void loadColumns(db, t.name);
   };
 
+  const handleContextMenu = (e: React.MouseEvent, db: string, table: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY, db, table });
+  };
+
+  const closeContextMenu = () => setContextMenu(null);
+
   if (error) return <div className="explorer error">{error}</div>;
 
   return (
@@ -124,6 +138,7 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable }: Ob
                       className={`table-item${expandedTable === `${dbNode.name}.${t.name}` ? ' expanded' : ''}`}
                       onClick={() => toggleTable(dbNode.name, t)}
                       onDoubleClick={() => onOpenTable?.(dbNode.name, t.name)}
+                      onContextMenu={(e) => handleContextMenu(e, dbNode.name, t.name)}
                       title={t.comment || t.name}
                     >
                       <span className="tree-arrow">
@@ -145,10 +160,16 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable }: Ob
                     {expandedTable === `${dbNode.name}.${t.name}` && t.columns && (
                       <ul className="col-list">
                         {t.columns.map((c) => (
-                          <li key={c.name} className={c.isPrimary ? 'pk' : ''} title={c.comment}>
+                          <li
+                            key={c.name}
+                            className={c.isPrimary ? 'pk' : ''}
+                            title={c.comment || `双击插入 \`${c.name}\``}
+                            onDoubleClick={() => onInsertColumn?.(dbNode.name, t.name, c.name)}
+                          >
                             <span className="col-key">{c.isPrimary ? '🔑' : ''}</span>
-                            {c.name} <em>{c.type}</em>
-                            {c.nullable ? '' : ' NOT NULL'}
+                            <span className="col-name">{c.name}</span>
+                            <em>{c.type}</em>
+                            {c.comment ? <span className="col-comment">{c.comment}</span> : null}
                           </li>
                         ))}
                       </ul>
@@ -163,6 +184,40 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable }: Ob
           <li className="explorer-empty">该连接无可见数据库</li>
         )}
       </ul>
+      {contextMenu && (
+        <>
+          <div className="context-backdrop" onClick={closeContextMenu} />
+          <div className="context-menu" style={{ left: contextMenu.x, top: contextMenu.y }}>
+            <button
+              className="context-item"
+              onClick={() => {
+                closeContextMenu();
+                if (contextMenu) onPreviewTable?.(contextMenu.db, contextMenu.table);
+              }}
+            >
+              数据预览
+            </button>
+            <button
+              className="context-item"
+              onClick={() => {
+                closeContextMenu();
+                if (contextMenu) onDdlTable?.(contextMenu.db, contextMenu.table);
+              }}
+            >
+              查看 DDL
+            </button>
+            <button
+              className="context-item"
+              onClick={() => {
+                closeContextMenu();
+                if (contextMenu) void loadColumns(contextMenu.db, contextMenu.table);
+              }}
+            >
+              刷新
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

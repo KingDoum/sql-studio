@@ -1,16 +1,16 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Database, History, Star } from 'lucide-react';
 import { ConnectionManager } from '@renderer/components/ConnectionManager';
 import { ObjectExplorer } from '@renderer/components/ObjectExplorer';
 import { EditorTabs } from '@renderer/components/EditorTabs';
-import { SqlEditor } from '@renderer/components/SqlEditor';
+import { SqlEditor, type SqlEditorHandle } from '@renderer/components/SqlEditor';
 import { ResultTabs } from '@renderer/components/ResultTabs';
 import { ExportMenu } from '@renderer/components/ExportMenu';
 import { HistoryPanel } from '@renderer/components/HistoryPanel';
 import { FavoritesPanel } from '@renderer/components/FavoritesPanel';
 import { AiSettingsPanel } from '@renderer/components/AiSettingsPanel';
 import { useWorkspace, useActiveTab } from '@renderer/store/workspace';
-import { buildSelectSql, splitStatements } from '@renderer/lib/sql-utils';
+import { buildSelectSql, escapeIdent, splitStatements } from '@renderer/lib/sql-utils';
 import { hasWriteStatements } from '@renderer/lib/cell-format';
 
 /**
@@ -24,10 +24,12 @@ function App() {
   const [showFavorites, setShowFavorites] = useState(false);
   const [showAiSettings, setShowAiSettings] = useState(false);
   const [aiSettingsVersion, setAiSettingsVersion] = useState(0);
+  const sqlEditorRef = useRef<SqlEditorHandle | null>(null);
   const {
     tabs,
     activeTabId,
     currentConnectionId,
+    executing,
     setConnection,
     newTab,
     openTabFromFile,
@@ -36,6 +38,7 @@ function App() {
     updateSql,
     markSaved,
     setExecution,
+    setExecuting,
   } = useWorkspace();
   const activeTab = useActiveTab();
 
@@ -45,12 +48,40 @@ function App() {
   };
 
   // ── 脚本动作（新建/打开/保存/另存为）──
+  // 记忆最近脚本目录（settings:lastScriptDir），对话框 defaultPath 用它
+  const lastScriptDirRef = useRef<string>('');
+
+  const ensureScriptDir = async (filePath: string) => {
+    const dir = filePath.slice(0, Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\')));
+    if (dir && dir !== lastScriptDirRef.current) {
+      lastScriptDirRef.current = dir;
+      void window.sqlStudio['settings:set']({ key: 'lastScriptDir', value: dir });
+    }
+  };
+
+  useEffect(() => {
+    void window.sqlStudio['settings:get']({ key: 'lastScriptDir' }).then((dir) => {
+      if (dir) lastScriptDirRef.current = dir;
+    });
+  }, []);
+
   const handleOpen = async () => {
-    const filePath = window.prompt('输入要打开的 .sql 文件路径');
+    let filePath: string | null = null;
+    try {
+      filePath = await window.sqlStudio['dialog:showOpenDialog']({
+        title: '打开 SQL 脚本',
+        defaultPath: lastScriptDirRef.current || undefined,
+        filters: [{ name: 'SQL 文件', extensions: ['sql'] }],
+      });
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : '无法打开文件对话框');
+      return;
+    }
     if (!filePath) return;
     try {
       const { content } = await window.sqlStudio['script:open']({ filePath });
       openTabFromFile(filePath, content);
+      void ensureScriptDir(filePath);
     } catch (err) {
       window.alert(err instanceof Error ? err.message : '打开失败');
     }
@@ -58,11 +89,25 @@ function App() {
 
   const handleSaveAs = async () => {
     if (!activeTab) return;
-    const filePath = window.prompt('输入保存路径（.sql）');
-    if (!filePath) return;
+    let filePath: string | null = null;
     try {
-      await window.sqlStudio['script:save']({ filePath, content: activeTab.sql });
-      markSaved(activeTab.id, filePath);
+      filePath = await window.sqlStudio['dialog:showSaveDialog']({
+        title: '保存 SQL 脚本',
+        defaultPath: lastScriptDirRef.current
+          ? `${lastScriptDirRef.current.replace(/[\\/]$/, '')}/未命名.sql`
+          : '未命名.sql',
+        filters: [{ name: 'SQL 文件', extensions: ['sql'] }],
+      });
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : '无法打开保存对话框');
+      return;
+    }
+    if (!filePath) return;
+    const finalPath = filePath.endsWith('.sql') ? filePath : `${filePath}.sql`;
+    try {
+      await window.sqlStudio['script:save']({ filePath: finalPath, content: activeTab.sql });
+      markSaved(activeTab.id, finalPath);
+      void ensureScriptDir(finalPath);
     } catch (err) {
       window.alert(err instanceof Error ? err.message : '保存失败');
     }
@@ -97,11 +142,14 @@ function App() {
     ) {
       return;
     }
+    const clientQueryId = crypto.randomUUID();
+    setExecuting({ tabId: activeTabId ?? '', connectionId: currentConnectionId, clientQueryId });
     try {
       const result = await window.sqlStudio['query:execute']({
         connectionId: currentConnectionId,
         sql,
         database,
+        clientQueryId,
       });
       setExecution({
         tabId: activeTabId ?? '',
@@ -111,7 +159,6 @@ function App() {
         result,
         executedAt: Date.now(),
       });
-      // 历史由主进程 query:execute handler 自动记录（ipc.ts），此处不再重复提交
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       setExecution({
@@ -123,6 +170,16 @@ function App() {
         executedAt: Date.now(),
       });
     }
+    // setExecution 已设置 executing: null
+  };
+
+  // ── 查询取消（体验优化 §14）──
+  const handleCancelQuery = () => {
+    if (!executing) return;
+    void window.sqlStudio['query:cancel']({
+      connectionId: executing.connectionId,
+      queryId: executing.clientQueryId,
+    });
   };
 
   // ── 历史收藏动作（任务 11）──
@@ -157,6 +214,30 @@ function App() {
     updateSql(id, buildSelectSql(db, table));
   };
 
+  // 数据预览 → 生成 LIMIT 查询到新标签并自动执行
+  const handlePreviewTable = (db: string, table: string) => {
+    const id = newTab();
+    const sql = `SELECT * FROM \`${escapeIdent(db)}\`.\`${escapeIdent(table)}\` LIMIT 100;`;
+    updateSql(id, sql);
+    void handleExecute(sql, db);
+  };
+
+  // 双击字段 → 插入到编辑器光标处（体验优化 §14）
+  const handleInsertColumn = (db: string, table: string, column: string) => {
+    sqlEditorRef.current?.insertTextAtCursor(`\`${db}\`.\`${table}\`.\`${column}\``);
+  };
+
+  // 右键菜单「查看 DDL」→ schema:ddl 取 DDL 文本到新标签
+  const handleDdlTable = async (db: string, table: string) => {
+    try {
+      const { ddl } = await window.sqlStudio['schema:ddl']({ connectionId: currentConnectionId!, database: db, table });
+      const id = newTab();
+      updateSql(id, `-- DDL for \`${db}\`.\`${table}\`\n${ddl}`);
+    } catch (err) {
+      window.alert(`获取 DDL 失败：${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
   const handleCloseTab = (id: string) => closeTab(id);
 
   return (
@@ -178,10 +259,10 @@ function App() {
           <div className="sidebar-panel panel-explorer">
             <ObjectExplorer
               connectionId={selectedId}
-              onPreviewTable={(db, table) => {
-                console.log('预览表:', db, table);
-              }}
+              onPreviewTable={handlePreviewTable}
               onOpenTable={handleOpenTable}
+              onInsertColumn={handleInsertColumn}
+              onDdlTable={handleDdlTable}
             />
           </div>
         )}
@@ -216,11 +297,16 @@ function App() {
         {activeTab ? (
           <div className="editor-pane">
             <SqlEditor
-              key={activeTab.id}
+              ref={sqlEditorRef}
               tab={activeTab}
               connectionId={currentConnectionId}
+              isExecuting={
+                executing?.tabId === activeTab.id &&
+                executing.connectionId === currentConnectionId
+              }
               onSqlChange={(sql) => updateSql(activeTab.id, sql)}
               onExecute={(sql, db) => void handleExecute(sql, db)}
+              onCancelQuery={handleCancelQuery}
               onOpenAiSettings={() => setShowAiSettings(true)}
               aiSettingsVersion={aiSettingsVersion}
             />

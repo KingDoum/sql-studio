@@ -15,15 +15,17 @@ import { useWorkspace } from '@renderer/store/workspace';
 vi.mock('@monaco-editor/react', () => ({
   default: function MockEditor({
     value,
+    defaultValue,
     onChange,
   }: {
-    value: string;
+    value?: string;
+    defaultValue?: string;
     onChange?: (v: string | undefined) => void;
   }) {
     return (
       <textarea
         data-testid="monaco-stub"
-        value={value}
+        value={value ?? defaultValue ?? ''}
         onChange={(e) => onChange?.(e.target.value)}
       />
     );
@@ -56,6 +58,12 @@ function mockFullSqlStudio(overrides: Record<string, unknown> = {}) {
       truncated: false,
       hasWrite: false,
     })),
+    'settings:get': vi.fn(async () => null),
+    'settings:set': vi.fn(async () => ({ saved: true })),
+    'dialog:showSaveDialog': vi.fn(async () => '/save/script.sql'),
+    'dialog:showOpenDialog': vi.fn(async () => '/save/script.sql'),
+    'connections:testById': vi.fn(async () => ({ ok: true, message: 'ok' })),
+    'schema:ddl': vi.fn(async () => ({ ddl: 'CREATE TABLE users (id int)' })),
     ...overrides,
   };
   (window as unknown as { sqlStudio: unknown }).sqlStudio = sqlStudio;

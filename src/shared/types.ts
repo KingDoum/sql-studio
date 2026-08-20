@@ -156,6 +156,8 @@ export interface QueryRequest {
   statement?: string;
   /** 行数上限保护（默认由主进程常量 MAX_RESULT_ROWS 决定）。 */
   maxRows?: number;
+  /** 客户端生成的查询 id，用于取消执行时匹配（渲染进程零直连：clientQueryId 由渲染进程生成，不接触密码）。 */
+  clientQueryId?: string;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -307,6 +309,26 @@ export interface ExportResult {
 // ─────────────────────────────────────────────────────────────
 // 通用响应包装
 // ─────────────────────────────────────────────────────────────
+
+/** 原生保存对话框选项（导出/另存为共用）。 */
+export interface ShowSaveDialogOptions {
+  /** 默认文件名/路径（可含目录）。 */
+  defaultPath?: string;
+  /** 文件类型过滤器。 */
+  filters?: Array<{ name: string; extensions: string[] }>;
+  /** 对话框标题。 */
+  title?: string;
+}
+
+/** 原生打开文件对话框选项。 */
+export interface ShowOpenDialogOptions {
+  /** 默认打开目录。 */
+  defaultPath?: string;
+  /** 文件类型过滤器。 */
+  filters?: Array<{ name: string; extensions: string[] }>;
+  /** 对话框标题。 */
+  title?: string;
+}
 
 /** 主进程 handler 统一返回结构：成功返回 data，失败返回 error。 */
 export interface IpcResult<T> {

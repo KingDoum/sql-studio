@@ -8,6 +8,7 @@ import {
   endWithQualifiedDot,
   isTableContext,
   isDotEnding,
+  extractTableAliases,
   type SchemaSnapshot,
 } from '@renderer/lib/sql-completion';
 
@@ -119,5 +120,37 @@ describe('上下文判定辅助函数', () => {
   it('isDotEnding 识别以点结尾', () => {
     expect(isDotEnding('users.')).toBe(true);
     expect(isDotEnding('users')).toBe(false);
+  });
+});
+
+describe('extractTableAliases', () => {
+  it('FROM users u 解析别名 u → users', () => {
+    expect(extractTableAliases('SELECT * FROM users u WHERE u.')).toEqual({ u: 'users' });
+  });
+  it('FROM users AS u 解析别名', () => {
+    expect(extractTableAliases('SELECT * FROM users AS u WHERE u.')).toEqual({ u: 'users' });
+  });
+  it('JOIN 也解析别名', () => {
+    expect(extractTableAliases('SELECT * FROM users u JOIN orders o ON u.id = o.user_id')).toEqual({
+      u: 'users', o: 'orders',
+    });
+  });
+  it('非别名时不误判（FROM users, orders）', () => {
+    expect(extractTableAliases('SELECT * FROM users, orders')).toEqual({});
+  });
+  it('反引号包裹的表名与别名', () => {
+    expect(extractTableAliases('SELECT * FROM `order details` od')).toEqual({ od: 'order details' });
+  });
+  it('空前缀返回空', () => {
+    expect(extractTableAliases('')).toEqual({});
+  });
+});
+
+describe('别名补全（体验优化）', () => {
+  it('`别名.` 返回对应表的字段', () => {
+    const p = new SchemaCompletionProvider(makeSnapshot());
+    const items = p.provideCompletions({ prefix: 'SELECT * FROM users u WHERE u.', word: '' });
+    expect(items.some((i) => i.label === 'id' && i.category === 'column')).toBe(true);
+    expect(items.some((i) => i.label === 'email' && i.category === 'column')).toBe(true);
   });
 });

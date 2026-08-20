@@ -49,6 +49,7 @@ describe('IPC 契约', () => {
       'connections:remove',
       'connections:test',
       'connections:get',
+      'connections:testById',
       'schema:databases',
       'schema:tables',
       'schema:columns',
@@ -70,6 +71,10 @@ describe('IPC 契约', () => {
       'ai:complete',
       'settings:getAiConfig',
       'settings:setAiConfig',
+      'settings:get',
+      'settings:set',
+      'dialog:showSaveDialog',
+      'dialog:showOpenDialog',
     ];
     expect(channels.length).toBe(Object.values(IPC_CHANNELS).length);
   });

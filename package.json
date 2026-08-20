@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "Navicat 风格的桌面 SQL 分析平台（Electron + React + Monaco）",
   "main": "dist/main/main.cjs",
-  "author": "SQL Studio Team",
+  "author": "SQL Studio Team <kingdoums@icloud.com>",
   "license": "MIT",
   "private": true,
   "type": "module",

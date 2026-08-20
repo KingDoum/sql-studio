@@ -96,11 +96,11 @@ describe('App 工作台冒烟', () => {
     fireEvent.click(await screen.findByText('本地'));
     fireEvent.click(await screen.findByText(/test_db/));
     const table = await screen.findByText(/users/);
-    // 双击表（注意：table-item 上有 preview 按钮，双击需落在表名上）
     fireEvent.dblClick(table.closest('div') as HTMLElement);
     const stub = await screen.findByTestId('monaco-stub');
     expect((stub as HTMLTextAreaElement).value).toContain('SELECT * FROM `test_db`.`users`');
-    expect(screen.getByText(/test_db.users/)).toBeTruthy();
+    // 新标签为未命名（不再用假 filePath）
+    expect(screen.getByText(/未命名/)).toBeTruthy();
   });
 
   it('新建标签 → 编辑变脏 → 保存（另存为路径）', async () => {

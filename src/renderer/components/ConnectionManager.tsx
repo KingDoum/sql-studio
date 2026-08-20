@@ -34,13 +34,18 @@ export function ConnectionManager({ onSelect, selectedId }: ConnectionManagerPro
   }, []);
 
   const handleSave = async (input: Parameters<typeof window.sqlStudio['connections:save']>[0]) => {
-    await window.sqlStudio['connections:save'](input);
-    setShowForm(false);
-    await refresh();
+    try {
+      await window.sqlStudio['connections:save'](input);
+      setShowForm(false);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存连接失败');
+    }
   };
 
   const handleTest = async (input: Parameters<typeof window.sqlStudio['connections:test']>[0]) => {
-    await window.sqlStudio['connections:test'](input);
+    const res = await window.sqlStudio['connections:test'](input);
+    if (!res.ok) throw new Error(res.message);
   };
 
   const handleRemove = async (id: string) => {

@@ -35,8 +35,8 @@ export type QueryExecutor = (sql: string) => Promise<RawResultSet[]>;
 
 /** 主进程常量（铁律 R5：单一来源）。 */
 export const QUERY_CONFIG = {
-  /** 单次查询结果集行数上限，超过则截断并标记 truncated。 */
-  MAX_RESULT_ROWS: 1000,
+  /** 单次查询结果集行数上限，超过则截断并标记 truncated（与渲染进程 MAX_RESULT_ROWS 5万一致）。 */
+  MAX_RESULT_ROWS: 50_000,
 } as const;
 
 /**

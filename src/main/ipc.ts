@@ -92,20 +92,31 @@ export function registerIpc(deps: IpcDeps, ipcMain: IpcMain): void {
   });
 
   // schema 浏览
+  // 缓存 SchemaCache 实例（按 connectionId），避免每次 IPC 调用新建实例
+  const schemaCaches = new Map<string, SchemaCache>();
+  function getSchemaCache(connectionId: string): SchemaCache {
+    let cache = schemaCaches.get(connectionId);
+    if (!cache) {
+      cache = new SchemaCache(makeSchemaExecutor(deps, connectionId));
+      schemaCaches.set(connectionId, cache);
+    }
+    return cache;
+  }
+
   handle(IPC_CHANNELS['schema:databases'], (arg) => {
-    const cache = new SchemaCache(makeSchemaExecutor(deps, arg.connectionId));
+    const cache = getSchemaCache(arg.connectionId);
     return cache.listDatabases();
   });
   handle(IPC_CHANNELS['schema:tables'], (arg) => {
-    const cache = new SchemaCache(makeSchemaExecutor(deps, arg.connectionId));
+    const cache = getSchemaCache(arg.connectionId);
     return cache.listTables(arg.database);
   });
   handle(IPC_CHANNELS['schema:columns'], (arg) => {
-    const cache = new SchemaCache(makeSchemaExecutor(deps, arg.connectionId));
+    const cache = getSchemaCache(arg.connectionId);
     return cache.getColumns(arg.database, arg.table);
   });
   handle(IPC_CHANNELS['schema:ddl'], async (arg) => {
-    const cache = new SchemaCache(makeSchemaExecutor(deps, arg.connectionId));
+    const cache = getSchemaCache(arg.connectionId);
     const ddl = await cache.getDdl(arg.database, arg.table);
     return { ddl };
   });
@@ -134,7 +145,7 @@ export function registerIpc(deps: IpcDeps, ipcMain: IpcMain): void {
         connectionId: arg.connectionId,
         connectionName: connSummary?.name,
         sql: arg.statement ?? arg.sql,
-        success: !result.resultSets.some((r) => r.truncated) || true,
+        success: result.resultSets.every((r) => !r.truncated),
         rowCount: result.resultSets.reduce((n, r) => n + r.rows.length, 0),
         elapsedMs: result.totalElapsedMs,
       });

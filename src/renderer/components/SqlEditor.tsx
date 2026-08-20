@@ -47,11 +47,20 @@ async function fetchSchemaSnapshot(
   connectionId: string,
 ): Promise<SchemaSnapshot | null> {
   try {
+    // 先获取连接配置的默认数据库（优先于 databases[0]）
+    let defaultDb: string | undefined;
+    try {
+      const connSummary = await window.sqlStudio['connections:get']({ id: connectionId });
+      defaultDb = connSummary.database;
+    } catch {
+      // 获取连接详情失败，回退到 databases[0]
+    }
+
     const databases: string[] = await window.sqlStudio['schema:databases']({
       connectionId,
     });
     if (!databases.length) return null;
-    const database = databases[0];
+    const database = defaultDb && databases.includes(defaultDb) ? defaultDb : databases[0];
     const tables: TableMeta[] = await window.sqlStudio['schema:tables']({
       connectionId,
       database,
@@ -175,6 +184,12 @@ export function SqlEditor({
   }, []);
 
   // 注册快捷键（addAction 返回 IDisposable）
+  // 用 ref 保持最新回调，effect 只在 monaco/editor 就绪后执行一次，避免重复注册
+  const executeRef = useRef(handleExecute);
+  executeRef.current = handleExecute;
+  const formatRef = useRef(handleFormat);
+  formatRef.current = handleFormat;
+
   useEffect(() => {
     const monaco = monacoRef.current;
     const editor = editorRef.current;
@@ -183,69 +198,73 @@ export function SqlEditor({
       id: 'sql-studio.execute',
       label: '执行',
       keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
-      run: handleExecute,
+      run: () => executeRef.current(),
     });
     const action2 = editor.addAction({
       id: 'sql-studio.format',
       label: '格式化',
       keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF],
-      run: handleFormat,
+      run: () => formatRef.current(),
     });
     return () => {
       action1.dispose();
       action2.dispose();
     };
-  }, [handleExecute, handleFormat]);
+  }, [monacoRef.current, editorRef.current]);
 
-  const beforeMount: BeforeMount = useCallback((monaco) => {
+  // 模块级补全 provider 注册守卫（只注册一次，避免 key={tab.id} 切换导致重复注册）
+let completionProviderRegistered = false;
+let globalCompletionDisposable: { dispose(): void } | null = null;
+
+const beforeMount: BeforeMount = useCallback((monaco) => {
     // 注册主题
     monaco.editor.defineTheme('sql-studio-dark', SQL_STUDIO_THEME);
-    // 注册补全 provider（用 ref 保持最新快照）
-    providerRef.current = new SchemaCompletionProvider(null);
-    monaco.languages.registerCompletionItemProvider('sql', {
-      triggerCharacters: ['.', '`'],
-      provideCompletionItems: (
-        model: {
-          getWordUntilPosition(pos: unknown): {
-            word: string;
-            startColumn: number;
-            endColumn: number;
+
+    // 补全 provider：全局只注册一次
+    if (!completionProviderRegistered) {
+      completionProviderRegistered = true;
+      providerRef.current = new SchemaCompletionProvider(null);
+      globalCompletionDisposable = monaco.languages.registerCompletionItemProvider('sql', {
+        triggerCharacters: ['.', '`'],
+        provideCompletionItems: (
+          model: {
+            getWordUntilPosition(pos: unknown): { word: string; startColumn: number; endColumn: number };
+            getValueInRange(range: unknown): string;
+          },
+          position: { lineNumber: number; column: number },
+        ) => {
+          const provider = providerRef.current;
+          if (!provider) return { suggestions: [] };
+          const word = model.getWordUntilPosition(position);
+          const prefix = model.getValueInRange({
+            startLineNumber: 1,
+            startColumn: 1,
+            endLineNumber: position.lineNumber,
+            endColumn: position.column,
+          });
+          const items = provider.provideCompletions({
+            prefix,
+            word: word.word,
+            connectionId: snapshotRef.current?.connectionId,
+            database: snapshotRef.current?.database,
+          });
+          return {
+            suggestions: items.map((it) => ({
+              label: it.label,
+              kind: categoryToMonacoKind(it.category),
+              insertText: it.insertText ?? it.label,
+              detail: it.detail,
+              range: {
+                startLineNumber: position.lineNumber,
+                endLineNumber: position.lineNumber,
+                startColumn: word.startColumn,
+                endColumn: word.endColumn,
+              },
+            })),
           };
-          getValueInRange(range: unknown): string;
         },
-        position: { lineNumber: number; column: number },
-      ) => {
-        const provider = providerRef.current;
-        if (!provider) return { suggestions: [] };
-        const word = model.getWordUntilPosition(position);
-        const prefix = model.getValueInRange({
-          startLineNumber: 1,
-          startColumn: 1,
-          endLineNumber: position.lineNumber,
-          endColumn: position.column,
-        });
-        const items = provider.provideCompletions({
-          prefix,
-          word: word.word,
-          connectionId: snapshotRef.current?.connectionId,
-          database: snapshotRef.current?.database,
-        });
-        return {
-          suggestions: items.map((it) => ({
-            label: it.label,
-            kind: categoryToMonacoKind(it.category),
-            insertText: it.insertText ?? it.label,
-            detail: it.detail,
-            range: {
-              startLineNumber: position.lineNumber,
-              endLineNumber: position.lineNumber,
-              startColumn: word.startColumn,
-              endColumn: word.endColumn,
-            },
-          })),
-        };
-      },
-    });
+      });
+    }
   }, []);
 
   const onMount: OnMount = useCallback((editor, monaco) => {

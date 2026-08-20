@@ -111,14 +111,7 @@ function App() {
         result,
         executedAt: Date.now(),
       });
-      // 自动记录历史（fire-and-forget）
-      window.sqlStudio['history:add']({
-        connectionId: currentConnectionId,
-        sql,
-        success: true,
-        rowCount: result.resultSets.reduce((n, s) => n + s.rows.length, 0),
-        elapsedMs: result.totalElapsedMs,
-      }).catch(() => {});
+      // 历史由主进程 query:execute handler 自动记录（ipc.ts），此处不再重复提交
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       setExecution({
@@ -129,14 +122,6 @@ function App() {
         error: errMsg,
         executedAt: Date.now(),
       });
-      // 记录失败历史
-      window.sqlStudio['history:add']({
-        connectionId: currentConnectionId,
-        sql,
-        success: false,
-        rowCount: 0,
-        elapsedMs: 0,
-      }).catch(() => {});
     }
   };
 
@@ -166,10 +151,10 @@ function App() {
     }
   };
 
-  // 对象树双击表 → 生成 SELECT 新标签
+  // 对象树双击表 → 生成 SELECT 新标签（未保存，避免假 filePath）
   const handleOpenTable = (db: string, table: string) => {
-    const id = openTabFromFile(`${db}.${table}`, buildSelectSql(db, table));
-    setActiveTab(id);
+    const id = newTab();
+    updateSql(id, buildSelectSql(db, table));
   };
 
   const handleCloseTab = (id: string) => closeTab(id);

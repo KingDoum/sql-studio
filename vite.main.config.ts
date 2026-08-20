@@ -5,8 +5,16 @@ import path from 'node:path';
  * 主进程 + preload 构建配置。
  * 双入口输出为 CommonJS（Electron 要求），npm 包与 node 内置模块全部 external，
  * 运行时从 node_modules 加载，避免重复打包（原生模块如 better-sqlite3 必须 external）。
+ * 路径别名 @shared @main @preload 与 tsconfig 对齐。
  */
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@shared': path.resolve(__dirname, 'src/shared'),
+      '@main': path.resolve(__dirname, 'src/main'),
+      '@preload': path.resolve(__dirname, 'src/preload'),
+    },
+  },
   build: {
     outDir: 'dist/main',
     emptyOutDir: true,
@@ -25,8 +33,8 @@ export default defineConfig({
         exports: 'auto',
       },
       external: (id) => {
-        // 项目内部模块：相对路径或以盘符/斜杠开头的绝对路径
-        if (id.startsWith('.') || id.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(id)) {
+        // 项目内部模块：相对路径、绝对路径、路径别名一律不 external
+        if (id.startsWith('.') || id.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(id) || id.startsWith('@')) {
           return false;
         }
         // 其余（electron、node:xx、npm 包）一律 external

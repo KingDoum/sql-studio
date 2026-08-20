@@ -28,12 +28,17 @@ interface Cache {
   ddls: Map<string, string | null>;
 }
 
+/** 反引号转义（防 SQL 注入）。 */
+function esc(name: string): string {
+  return name.replace(/`/g, '``');
+}
+
 /** 常用只读查询 SQL（集中常量）。 */
 export const SCHEMA_SQL = {
   listDatabases: 'SHOW DATABASES',
-  listTables: (db: string) => `SHOW FULL TABLES FROM \`${db}\``,
-  getColumns: (db: string, table: string) => `SHOW FULL COLUMNS FROM \`${table}\` FROM \`${db}\``,
-  getDdl: (db: string, table: string) => `SHOW CREATE TABLE \`${db}\`.\`${table}\``,
+  listTables: (db: string) => `SHOW FULL TABLES FROM \`${esc(db)}\``,
+  getColumns: (db: string, table: string) => `SHOW FULL COLUMNS FROM \`${esc(table)}\` FROM \`${esc(db)}\``,
+  getDdl: (db: string, table: string) => `SHOW CREATE TABLE \`${esc(db)}\`.\`${esc(table)}\``,
 } as const;
 
 /** 把 mysql2 原始类型名（如 int(11)）粗略归一为 ColumnType。 */

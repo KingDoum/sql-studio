@@ -40,6 +40,10 @@ export interface SqlEditorProps {
 
 const MAX_TABLES_FETCH = 50;
 
+// 模块级补全 provider 注册守卫（只注册一次，避免 key={tab.id} 切换导致重复注册）
+let completionProviderRegistered = false;
+let globalCompletionDisposable: { dispose(): void } | null = null;
+
 /** 预取 schema 快照。
  *  渲染进程异步拉取主进程 SchemaCache 数据，构建 SchemaSnapshot
  *  供同步的 SchemaCompletionProvider 使用（架构：可插拔接口，provider 同步）。 */
@@ -98,6 +102,7 @@ export function SqlEditor({
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
   const providerRef = useRef<SchemaCompletionProvider | null>(null);
   const snapshotRef = useRef<SchemaSnapshot | null>(null);
+  const onCleanupRef = useRef<(() => void) | null>(null);
   const [schemaLoading, setSchemaLoading] = useState(false);
   const [aiState, setAiState] = useState<AiProviderState>({ enabled: false, config: null });
   const aiProviderRef = useRef<ReturnType<typeof createAiInlineProvider> | null>(null);
@@ -124,6 +129,11 @@ export function SqlEditor({
   useEffect(() => {
     fetchAiConfig().then(setAiState);
   }, [aiSettingsVersion]);
+
+  // 组件卸载时清理快捷键
+  useEffect(() => {
+    return () => onCleanupRef.current?.();
+  }, []);
 
   // AI 状态变化 → 重新注册 inline provider
   useEffect(() => {
@@ -184,37 +194,11 @@ export function SqlEditor({
   }, []);
 
   // 注册快捷键（addAction 返回 IDisposable）
-  // 用 ref 保持最新回调，effect 只在 monaco/editor 就绪后执行一次，避免重复注册
+  // 用 ref 保持最新回调，避免闭包陈旧
   const executeRef = useRef(handleExecute);
   executeRef.current = handleExecute;
   const formatRef = useRef(handleFormat);
   formatRef.current = handleFormat;
-
-  useEffect(() => {
-    const monaco = monacoRef.current;
-    const editor = editorRef.current;
-    if (!monaco || !editor) return;
-    const action1 = editor.addAction({
-      id: 'sql-studio.execute',
-      label: '执行',
-      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
-      run: () => executeRef.current(),
-    });
-    const action2 = editor.addAction({
-      id: 'sql-studio.format',
-      label: '格式化',
-      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF],
-      run: () => formatRef.current(),
-    });
-    return () => {
-      action1.dispose();
-      action2.dispose();
-    };
-  }, [monacoRef.current, editorRef.current]);
-
-  // 模块级补全 provider 注册守卫（只注册一次，避免 key={tab.id} 切换导致重复注册）
-let completionProviderRegistered = false;
-let globalCompletionDisposable: { dispose(): void } | null = null;
 
 const beforeMount: BeforeMount = useCallback((monaco) => {
     // 注册主题
@@ -273,6 +257,24 @@ const beforeMount: BeforeMount = useCallback((monaco) => {
     editor.updateOptions({ theme: 'sql-studio-dark' });
     // 初装 tokenizer（空 schema）
     applyTokenizer(monaco, null);
+    // 注册快捷键（onMount 时 editor/monaco 已就绪，避免 useEffect 依赖 ref 空跑）
+    const action1 = editor.addAction({
+      id: 'sql-studio.execute',
+      label: '执行',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
+      run: () => executeRef.current(),
+    });
+    const action2 = editor.addAction({
+      id: 'sql-studio.format',
+      label: '格式化',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF],
+      run: () => formatRef.current(),
+    });
+    // 清理：组件卸载时 dispose 快捷键
+    onCleanupRef.current = () => {
+      action1.dispose();
+      action2.dispose();
+    };
     // 聚焦
     editor.focus();
   }, []);

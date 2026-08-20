@@ -7,7 +7,7 @@
  * （带懒加载的 tables），符合类型唯一来源（铁律 R5）——不复制主进程类型，
  * 仅组合共享类型 TableMeta/ColumnMeta。
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ColumnMeta, TableMeta } from '@shared/types';
 
 export interface ObjectExplorerProps {
@@ -28,42 +28,49 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable }: Ob
   const [expandedTable, setExpandedTable] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
-    let cancelled = false;
+    const reqId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
+    setExpandedDb(null);
+    setExpandedTable(null);
     window.sqlStudio['schema:databases']({ connectionId })
       .then((names) => {
-        if (!cancelled) setDatabases(names.map((name) => ({ name })));
+        if (reqId !== requestIdRef.current) return;
+        setDatabases(names.map((name) => ({ name })));
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : '加载库失败');
+        if (reqId !== requestIdRef.current) return;
+        setError(err instanceof Error ? err.message : '加载库失败');
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (reqId === requestIdRef.current) setLoading(false);
       });
-    return () => {
-      cancelled = true;
-    };
   }, [connectionId]);
 
   const loadTables = async (db: string) => {
+    const reqId = ++requestIdRef.current;
     try {
       const tables = await window.sqlStudio['schema:tables']({ connectionId, database: db });
+      if (reqId !== requestIdRef.current) return;
       setDatabases((dbs) => dbs.map((d) => (d.name === db ? { ...d, tables } : d)));
     } catch (err) {
+      if (reqId !== requestIdRef.current) return;
       setError(err instanceof Error ? err.message : `加载表失败：${db}`);
     }
   };
 
   const loadColumns = async (db: string, table: string) => {
+    const reqId = ++requestIdRef.current;
     try {
       const columns = await window.sqlStudio['schema:columns']({
         connectionId,
         database: db,
         table,
       });
+      if (reqId !== requestIdRef.current) return;
       setDatabases((dbs) =>
         dbs.map((d) => {
           if (d.name !== db || !d.tables) return d;

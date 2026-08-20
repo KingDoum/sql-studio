@@ -3,7 +3,7 @@
  *
  * - channel 命名规范：`域:动作`（如 `connections:list`）。
  * - 所有 handler 返回值统一为 `IpcResponse<T>`（见 shared/types.ts）。
- * - `ai.complete` 为 V2 占位：V1 仅定义不注册 handler。
+ * - `ai:complete` 与 `settings:*` 已实装（V2 AI 智能补全）。
  * - 主进程任何对外连接对象必须是 `ConnectionSummary`，绝不含 password。
  */
 
@@ -66,7 +66,7 @@ export const IPC_CHANNELS = {
   'favorites:remove': 'favorites:remove',
   'favorites:open': 'favorites:open',
 
-  // AI 补全（V2 占位，V1 不注册）
+  // AI 补全（V2 已实装）
   'ai:complete': 'ai:complete',
 
   // V2 AI 设置

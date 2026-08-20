@@ -140,8 +140,10 @@ export class FavoritesStore {
     this.ensureDir();
     const fileName = toFileName(req.name);
     const filePath = resolveNonCollidingPath(this.dir, fileName);
+    // 重名冲突时（文件名带序号），meta.name 跟随实际文件名，保证列表显示与删除一致
+    const actualName = path.basename(filePath, path.extname(filePath));
     const createdAtIso = new Date().toISOString();
-    fs.writeFileSync(filePath, serializeFile(req, createdAtIso), 'utf-8');
+    fs.writeFileSync(filePath, serializeFile({ ...req, name: actualName }, createdAtIso), 'utf-8');
     const stat = fs.statSync(filePath);
     const content = fs.readFileSync(filePath, 'utf-8');
     const { meta, sql } = parseFile(content);
@@ -160,10 +162,27 @@ export class FavoritesStore {
 
   /** 按收藏名（或文件名）删除；返回是否真删除了文件。 */
   removeFavorite(name: string): boolean {
-    const filePath = path.join(this.dir, toFileName(name));
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
+    // 1) 精确文件路径（含重名序号后缀，如 "foo (2).sql"）
+    const exactPath = path.join(this.dir, toFileName(name));
+    if (fs.existsSync(exactPath)) {
+      fs.unlinkSync(exactPath);
       return true;
+    }
+    // 2) 扫描目录按 meta.name 匹配（兼容旧数据 meta.name 为原名的情况）
+    if (fs.existsSync(this.dir)) {
+      const files = fs.readdirSync(this.dir).filter((f) => f.toLowerCase().endsWith('.sql'));
+      for (const f of files) {
+        const filePath = path.join(this.dir, f);
+        try {
+          const { meta } = parseFile(fs.readFileSync(filePath, 'utf-8'));
+          if (meta.name === name) {
+            fs.unlinkSync(filePath);
+            return true;
+          }
+        } catch {
+          // 解析失败跳过
+        }
+      }
     }
     return false;
   }

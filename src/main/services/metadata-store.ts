@@ -145,7 +145,13 @@ export class MetadataStore {
     const existing = input.id ? this.db.prepare('SELECT * FROM connections WHERE id = ?').get(input.id) : undefined;
     const createdAt = existing ? (existing as any).created_at : now;
 
-    const encrypted = this.security.encrypt(input.password ?? '');
+    // 编辑时密码留空 → 保留原密码（契约：password 可选）
+    const newPassword = input.password ?? '';
+    const effectivePassword =
+      input.id && existing && newPassword === ''
+        ? (existing as any).password
+        : this.security.encrypt(newPassword);
+
     this.db
       .prepare(
         `INSERT INTO connections
@@ -162,7 +168,7 @@ export class MetadataStore {
         host: input.host,
         port: input.port,
         user: input.user,
-        password: encrypted,
+        password: effectivePassword,
         database: input.database ?? null,
         charset: input.charset || 'utf8mb4',
         maxConnections: input.maxConnections ?? null,

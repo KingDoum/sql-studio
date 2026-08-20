@@ -16,6 +16,8 @@ import { FavoritesStore } from './services/favorites-store';
 import { registerIpc } from './ipc';
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
+// 模块级引用，使 before-quit 等事件可访问
+let connectionManager: ConnectionManager;
 
 /** mysql2 真实工厂（注入 ConnectionManager）。 */
 const mysqlFactory: Mysql2Factory = {
@@ -66,7 +68,7 @@ app.whenReady().then(() => {
     security,
   });
 
-  const connectionManager = new ConnectionManager(mysqlFactory);
+  connectionManager = new ConnectionManager(mysqlFactory);
   const favoritesStore = new FavoritesStore(path.join(userDataPath, 'queries'));
 
   // 2. 注册全部 IPC handler
@@ -89,4 +91,8 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('before-quit', () => {
+  connectionManager.closeAll();
 });

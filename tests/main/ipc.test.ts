@@ -7,6 +7,7 @@ import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
 import { registerIpc, type IpcDeps } from '@main/ipc';
+import { IPC_CHANNELS } from '@shared/ipc-contract';
 import { ConnectionManager, type RawResultSet } from '@main/services/connection-manager';
 import { MetadataStore } from '@main/services/metadata-store';
 import type { Security } from '@main/services/security';
@@ -72,7 +73,7 @@ describe('registerIpc', () => {
   });
 
   it('注册了全部 channel', () => {
-    expect(handlers.size).toBeGreaterThanOrEqual(20);
+    expect(handlers.size).toBe(Object.keys(IPC_CHANNELS).length);
     expect(handlers.has('app:ping')).toBe(true);
     expect(handlers.has('connections:list')).toBe(true);
     expect(handlers.has('query:execute')).toBe(true);

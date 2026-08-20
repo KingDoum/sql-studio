@@ -121,12 +121,14 @@ export function registerIpc(deps: IpcDeps, ipcMain: IpcMain): void {
     return { ddl };
   });
   handle(IPC_CHANNELS['schema:dataPreview'], async (arg) => {
-    const limit = arg.limit ?? 100;
+    const limit = Math.min(arg.limit ?? 100, 1000);
     const config = deps.metadataStore.getConnectionConfig(arg.connectionId);
     if (!config) throw new Error(`连接不存在: ${arg.connectionId}`);
+    // 反引号转义防 SQL 注入
+    const esc = (s: string) => s.replace(/`/g, '``');
     const sets = await deps.connectionManager.executeMany(
       config as ConnectionConfig,
-      `SELECT * FROM \`${arg.database}\`.\`${arg.table}\` LIMIT ${limit}`,
+      `SELECT * FROM \`${esc(arg.database)}\`.\`${esc(arg.table)}\` LIMIT ${limit}`,
     );
     const qs = new QueryService((sql) => Promise.resolve(sets));
     const result = await qs.run({ connectionId: arg.connectionId, sql: '' });
@@ -134,27 +136,44 @@ export function registerIpc(deps: IpcDeps, ipcMain: IpcMain): void {
   });
 
   // 查询执行
+  // 取消机制：queryId = connectionId + 自增序号；AbortController 映射
+  const queryAborters = new Map<string, AbortController>();
+  let querySeq = 0;
   handle(IPC_CHANNELS['query:execute'], async (arg) => {
-    const executor = makeExecutor(deps, arg.connectionId);
-    const qs = new QueryService(executor);
-    const result = await qs.run(arg);
-    // 自动记录历史
+    const abortController = new AbortController();
+    const queryId = `${arg.connectionId}:${++querySeq}`;
+    queryAborters.set(queryId, abortController);
     try {
-      const connSummary = deps.metadataStore.getConnection(arg.connectionId);
-      deps.metadataStore.addHistory({
-        connectionId: arg.connectionId,
-        connectionName: connSummary?.name,
-        sql: arg.statement ?? arg.sql,
-        success: result.resultSets.every((r) => !r.truncated),
-        rowCount: result.resultSets.reduce((n, r) => n + r.rows.length, 0),
-        elapsedMs: result.totalElapsedMs,
-      });
-    } catch {
-      // 历史记录失败不影响查询结果
+      const executor = makeExecutor(deps, arg.connectionId);
+      const qs = new QueryService(executor);
+      const result = await qs.run(arg, abortController.signal);
+      // 自动记录历史
+      try {
+        const connSummary = deps.metadataStore.getConnection(arg.connectionId);
+        deps.metadataStore.addHistory({
+          connectionId: arg.connectionId,
+          connectionName: connSummary?.name,
+          sql: arg.statement ?? arg.sql,
+          success: result.resultSets.every((r) => !r.truncated),
+          rowCount: result.resultSets.reduce((n, r) => n + r.rows.length, 0),
+          elapsedMs: result.totalElapsedMs,
+        });
+      } catch {
+        // 历史记录失败不影响查询结果
+      }
+      return result;
+    } finally {
+      queryAborters.delete(queryId);
     }
-    return result;
   });
-  handle(IPC_CHANNELS['query:cancel'], () => ({ cancelled: true }));
+  handle(IPC_CHANNELS['query:cancel'], (arg) => {
+    const aborter = queryAborters.get(`${arg.connectionId}:${arg.queryId}`);
+    if (aborter) {
+      aborter.abort();
+      return { cancelled: true };
+    }
+    return { cancelled: false };
+  });
 
   // 脚本文件
   handle(IPC_CHANNELS['script:open'], (arg) => {

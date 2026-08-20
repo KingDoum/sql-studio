@@ -28,4 +28,5 @@ npm-debug.log*
 
 # 备份
 *.bak.*
-*.bak
+*.bakaudit-report.txt
+code-review-result.txt

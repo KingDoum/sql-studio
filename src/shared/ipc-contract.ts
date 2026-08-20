@@ -20,6 +20,7 @@ import type {
   FavoriteSaveRequest,
   ExportExcelRequest,
   ExportInsertRequest,
+  ExportCsvRequest,
   ExportResult,
   AiCompletionRequest,
   AiCompletionResponse,
@@ -59,6 +60,7 @@ export const IPC_CHANNELS = {
   // 导出
   'export:excel': 'export:excel',
   'export:insert': 'export:insert',
+  'export:csv': 'export:csv',
 
   // 历史 / 收藏
   'history:list': 'history:list',
@@ -115,6 +117,7 @@ export interface IpcRequestMap {
 
   'export:excel': ExportExcelRequest;
   'export:insert': ExportInsertRequest;
+  'export:csv': ExportCsvRequest;
 
   'history:list': { connectionId?: string; limit?: number };
   'history:add': Omit<HistoryItem, 'id' | 'executedAt'>;
@@ -165,6 +168,7 @@ export interface IpcResponseMap {
 
   'export:excel': ExportResult;
   'export:insert': ExportResult;
+  'export:csv': ExportResult;
 
   'history:list': HistoryItem[];
   'history:add': HistoryItem;

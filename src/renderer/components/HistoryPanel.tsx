@@ -21,18 +21,29 @@ export function HistoryPanel({ open, onClose, onBackfillSql, onSaveAsFavorite }:
   const [items, setItems] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [keyword, setKeyword] = useState('');
 
   useEffect(() => {
     if (!open) return;
     setLoading(true);
     setError(null);
-    window.sqlStudio['history:list']({ limit: 100 })
+    window.sqlStudio['history:list']({ limit: 200 })
       .then(setItems)
       .catch((err: unknown) => setError(err instanceof Error ? err.message : '加载历史失败'))
       .finally(() => setLoading(false));
   }, [open]);
 
   if (!open) return null;
+
+  // 本地搜索过滤（不重新请求 IPC）
+  const kw = keyword.trim().toLowerCase();
+  const visible = kw
+    ? items.filter(
+        (h) =>
+          h.sql.toLowerCase().includes(kw) ||
+          (h.connectionName ?? '').toLowerCase().includes(kw),
+      )
+    : items;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -42,13 +53,28 @@ export function HistoryPanel({ open, onClose, onBackfillSql, onSaveAsFavorite }:
           <button className="modal-close" onClick={onClose}><X size={16} /></button>
         </div>
         <div className="modal-body">
+          <div className="history-toolbar">
+            <input
+              className="history-search"
+              placeholder="搜索 SQL / 连接名…"
+              value={keyword}
+              autoFocus
+              onChange={(e) => setKeyword(e.target.value)}
+            />
+            <span className="history-count">
+              {visible.length} / {items.length} 条
+            </span>
+          </div>
           {loading && <div className="modal-loading">加载中…</div>}
           {error && <div className="modal-error">{error}</div>}
           {!loading && !error && items.length === 0 && (
             <div className="modal-empty">暂无执行历史</div>
           )}
+          {!loading && !error && items.length > 0 && visible.length === 0 && (
+            <div className="modal-empty">未找到匹配「{keyword}」的历史记录</div>
+          )}
           <ul className="history-list">
-            {items.map((h) => (
+            {visible.map((h) => (
               <li key={h.id} className="history-item">
                 <div className="history-item-main">
                   <div className="history-sql" onClick={() => onBackfillSql(h.sql)} title="点击回填编辑器">

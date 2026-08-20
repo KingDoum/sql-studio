@@ -288,6 +288,13 @@ export interface SqlInsertOptions {
   columns?: string[];
 }
 
+/** CSV 导出选项。 */
+export interface CsvOptions {
+  filePath: string;
+  /** 是否包含表头行（默认 true）。 */
+  includeHeader?: boolean;
+}
+
 /** 导出请求：携带要导出的结果数据 + 选项。 */
 export interface ExportExcelRequest {
   options: ExcelOptions;
@@ -297,6 +304,12 @@ export interface ExportExcelRequest {
 
 export interface ExportInsertRequest {
   options: SqlInsertOptions;
+  columns: ColumnMeta[];
+  rows: CellValue[][];
+}
+
+export interface ExportCsvRequest {
+  options: CsvOptions;
   columns: ColumnMeta[];
   rows: CellValue[][];
 }

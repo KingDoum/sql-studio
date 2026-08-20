@@ -19,6 +19,7 @@ import { QueryService, type RawResultSet } from './services/query-service';
 import { ScriptStore } from './services/script-store';
 import { ExcelExporter } from './services/excel-exporter';
 import { SqlExporter } from './services/sql-exporter';
+import { CsvExporter } from './services/csv-exporter';
 import { AiService } from './services/ai-service';
 import { FavoritesStore } from './services/favorites-store';
 import type { ConnectionConfig, AiConfig } from '@shared/types';
@@ -218,6 +219,10 @@ export function registerIpc(deps: IpcDeps, ipcMain: IpcMain): void {
     const exporter = deps.sqlExporter ?? new SqlExporter();
     const n = exporter.export(arg);
     return { filePath: arg.options.filePath, rowCount: n };
+  });
+  handle(IPC_CHANNELS['export:csv'], (arg) => {
+    const exporter = new CsvExporter();
+    return exporter.export(arg).then((n) => ({ filePath: arg.options.filePath, rowCount: n }));
   });
 
   // 历史

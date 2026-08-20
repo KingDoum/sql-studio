@@ -42,6 +42,7 @@ describe('ExportMenu', () => {
     (window as unknown as { sqlStudio?: unknown }).sqlStudio = {
       'export:excel': vi.fn(async () => ({ filePath: '/out/test.xlsx', rowCount: 1 })),
       'export:insert': vi.fn(async () => ({ filePath: '/out/test.sql', rowCount: 1 })),
+      'export:csv': vi.fn(async () => ({ filePath: '/out/test.csv', rowCount: 1 })),
       'settings:get': vi.fn(async () => null),
       'settings:set': vi.fn(async () => ({ saved: true })),
       'dialog:showSaveDialog': vi.fn(async () => '/out/test.xlsx'),

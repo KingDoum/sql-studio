@@ -306,6 +306,12 @@ const beforeMount: BeforeMount = useCallback((monaco) => {
     onCleanupRef.current = () => {
       action1.dispose();
       action2.dispose();
+      // dispose 全局补全 provider 并重置守卫（组件卸载后可安全重挂载）
+      if (globalCompletionDisposable) {
+        globalCompletionDisposable.dispose();
+        globalCompletionDisposable = null;
+        completionProviderRegistered = false;
+      }
     };
     // 聚焦
     editor.focus();

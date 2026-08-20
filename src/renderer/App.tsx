@@ -9,8 +9,9 @@ import { ExportMenu } from '@renderer/components/ExportMenu';
 import { HistoryPanel } from '@renderer/components/HistoryPanel';
 import { FavoritesPanel } from '@renderer/components/FavoritesPanel';
 import { AiSettingsPanel } from '@renderer/components/AiSettingsPanel';
+import { DataPreviewModal } from '@renderer/components/DataPreviewModal';
 import { useWorkspace, useActiveTab } from '@renderer/store/workspace';
-import { buildSelectSql, escapeIdent, splitStatements } from '@renderer/lib/sql-utils';
+import { buildSelectSql, splitStatements } from '@renderer/lib/sql-utils';
 import { hasWriteStatements } from '@renderer/lib/cell-format';
 
 /**
@@ -24,6 +25,7 @@ function App() {
   const [showFavorites, setShowFavorites] = useState(false);
   const [showAiSettings, setShowAiSettings] = useState(false);
   const [aiSettingsVersion, setAiSettingsVersion] = useState(0);
+  const [preview, setPreview] = useState<{ database: string; table: string } | null>(null);
   const sqlEditorRef = useRef<SqlEditorHandle | null>(null);
   const {
     tabs,
@@ -214,12 +216,9 @@ function App() {
     updateSql(id, buildSelectSql(db, table));
   };
 
-  // 数据预览 → 生成 LIMIT 查询到新标签并自动执行
+  // 数据预览 → 弹窗展示前 100 行（不污染编辑器标签）
   const handlePreviewTable = (db: string, table: string) => {
-    const id = newTab();
-    const sql = `SELECT * FROM \`${escapeIdent(db)}\`.\`${escapeIdent(table)}\` LIMIT 100;`;
-    updateSql(id, sql);
-    void handleExecute(sql, db);
+    setPreview({ database: db, table });
   };
 
   // 双击字段 → 插入到编辑器光标处（体验优化 §14）
@@ -229,8 +228,9 @@ function App() {
 
   // 右键菜单「查看 DDL」→ schema:ddl 取 DDL 文本到新标签
   const handleDdlTable = async (db: string, table: string) => {
+    if (!currentConnectionId) return;
     try {
-      const { ddl } = await window.sqlStudio['schema:ddl']({ connectionId: currentConnectionId!, database: db, table });
+      const { ddl } = await window.sqlStudio['schema:ddl']({ connectionId: currentConnectionId, database: db, table });
       const id = newTab();
       updateSql(id, `-- DDL for \`${db}\`.\`${table}\`\n${ddl}`);
     } catch (err) {
@@ -338,6 +338,15 @@ function App() {
         onClose={() => setShowAiSettings(false)}
         onSettingsChanged={() => setAiSettingsVersion((v) => v + 1)}
       />
+      {preview && selectedId && (
+        <DataPreviewModal
+          open
+          connectionId={selectedId}
+          database={preview.database}
+          table={preview.table}
+          onClose={() => setPreview(null)}
+        />
+      )}
     </div>
   );
 }

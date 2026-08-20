@@ -89,12 +89,24 @@ export function isTableContext(prefix: string): boolean {
 export function extractTableAliases(prefix: string): Record<string, string> {
   const aliases: Record<string, string> = {};
   // 关键字 + 表名（反引号或普通标识符）+ 可选 AS + 别名（反引号或普通标识符）
-  // 表名和别名的反引号组优先匹配完整反引号段
-  const re = /(?:FROM|JOIN|INTO|UPDATE|TABLE)\s+(?:`([^`]+)`|([\w$]+))(?:\s+AS\s+|\s+)(?:`([^`]+)`|([\w$]+))(?=\s|$)/gi;
+  // 表名和别名的反引号组优先匹配完整反引号段；别名后允许 空格/逗号/结尾
+  const re = /(?:FROM|JOIN|INTO|UPDATE|TABLE)\s+(?:`([^`]+)`|([\w$]+))(?:\s+AS\s+|\s+)(?:`([^`]+)`|([\w$]+))(?=\s|,|$)/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(prefix)) !== null) {
     const table = m[1] ?? m[2] ?? '';
     const aliasRaw = m[3] ?? m[4] ?? '';
+    const alias = aliasRaw.replace(/`/g, '');
+    if (alias && alias.toLowerCase() !== table.toLowerCase()) {
+      aliases[alias.toLowerCase()] = table;
+    }
+  }
+  // 逗号分隔的隐式 JOIN：`FROM t1 a, t2 b` 中 t2 b 前面没有关键字
+  // 对所有已解析出的别名段整体再扫一遍逗号模式
+  const commaRe = /,\s*(?:`([^`]+)`|([\w$]+))(?:\s+AS\s+|\s+)(?:`([^`]+)`|([\w$]+))(?=\s|,|$)/gi;
+  let cm: RegExpExecArray | null;
+  while ((cm = commaRe.exec(prefix)) !== null) {
+    const table = cm[1] ?? cm[2] ?? '';
+    const aliasRaw = cm[3] ?? cm[4] ?? '';
     const alias = aliasRaw.replace(/`/g, '');
     if (alias && alias.toLowerCase() !== table.toLowerCase()) {
       aliases[alias.toLowerCase()] = table;

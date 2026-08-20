@@ -18,6 +18,7 @@ function mockSqlStudio(overrides: Record<string, unknown> = {}) {
     'connections:save': vi.fn(async () => ({ id: 'c2', name: 'new', host: '', port: 3306, user: '', charset: 'utf8mb4', createdAt: 1, updatedAt: 1 })),
     'connections:remove': vi.fn(async () => ({ removed: true })),
     'connections:test': vi.fn(async () => ({ ok: true, message: '连接成功' })),
+    'connections:testById': vi.fn(async () => ({ ok: true, message: 'ok' })),
     ...overrides,
   };
   (window as unknown as { sqlStudio: typeof base }).sqlStudio = base;

@@ -1353,6 +1353,40 @@ textarea {
 }
 
 /* ── 历史列表 ── */
+.history-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px 8px;
+}
+
+.history-search {
+  flex: 1;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+  transition: border-color var(--transition-fast) ease, box-shadow var(--transition-fast) ease;
+}
+
+.history-search:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.history-search::placeholder {
+  color: var(--text-muted);
+}
+
+.history-count {
+  font-size: 11px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
 .history-list {
   list-style: none;
   margin: 0;
@@ -1582,4 +1616,115 @@ textarea {
 .sql-editor-btn.ai-active {
   border-color: var(--accent);
   color: var(--accent-bright);
+}
+
+/* ── 数据预览弹窗 ── */
+.preview-modal {
+  width: 720px;
+  max-width: 92vw;
+  display: flex;
+  flex-direction: column;
+}
+
+.preview-obj {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--info);
+  font-weight: 400;
+}
+
+.preview-body {
+  flex: 1;
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+
+.preview-body .result-panel {
+  max-height: none;
+  border-top: none;
+  flex: 1;
+}
+
+.preview-truncated {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--warning);
+  border-top: 1px solid var(--border);
+  background: var(--statusbar-bg);
+}
+
+/* ── 导出 INSERT 表名输入弹窗 ── */
+.export-table-modal {
+  width: 380px;
+}
+
+.export-table-body {
+  padding: 16px;
+}
+
+.export-table-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.export-table-input {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 13px;
+  font-family: var(--font-mono);
+  outline: none;
+  transition: border-color var(--transition-fast) ease, box-shadow var(--transition-fast) ease;
+}
+
+.export-table-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.export-table-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.export-table-btn {
+  padding: 5px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text);
+  transition: background var(--transition-fast) ease, border-color var(--transition-fast) ease;
+}
+
+.export-table-btn:hover {
+  background: var(--bg-hover);
+}
+
+.export-table-btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.export-table-btn.primary:hover {
+  background: var(--accent-bright);
+}
+
+.export-table-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

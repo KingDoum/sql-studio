@@ -141,6 +141,11 @@ describe('extractTableAliases', () => {
   it('反引号包裹的表名与别名', () => {
     expect(extractTableAliases('SELECT * FROM `order details` od')).toEqual({ od: 'order details' });
   });
+  it('逗号分隔的隐式 JOIN（FROM t1 a, t2 b）', () => {
+    expect(extractTableAliases('SELECT * FROM users u, orders o WHERE u.id = o.user_id')).toEqual({
+      u: 'users', o: 'orders',
+    });
+  });
   it('空前缀返回空', () => {
     expect(extractTableAliases('')).toEqual({});
   });

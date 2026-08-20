@@ -57,7 +57,7 @@ export function ConnectionManager({ onSelect, selectedId }: ConnectionManagerPro
       const saved = await window.sqlStudio['connections:save'](input);
       setShowForm(false);
       await refresh();
-      void testConnection(saved.id);
+      if (saved?.id) void testConnection(saved.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存连接失败');
     }

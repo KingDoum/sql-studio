@@ -11,7 +11,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Download } from 'lucide-react';
 import { useWorkspace } from '@renderer/store/workspace';
-import type { ExportExcelRequest, ExportInsertRequest } from '@shared/types';
+import type { ExportExcelRequest, ExportInsertRequest, ExportCsvRequest } from '@shared/types';
 
 const LAST_EXPORT_DIR_KEY = 'lastExportDir';
 
@@ -19,6 +19,8 @@ export function ExportMenu() {
   const execution = useWorkspace((s) => s.execution);
   const [open, setOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [pendingInsert, setPendingInsert] = useState(false);
+  const [tableName, setTableName] = useState('');
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   const resultSet = execution?.result?.resultSets[0];
@@ -81,18 +83,46 @@ export function ExportMenu() {
     }
   };
 
-  const exportInsert = async () => {
+  const exportCsv = async () => {
     if (!resultSet) return;
-    const tableName = window.prompt('目标表名');
-    if (!tableName) return;
-    const filePath = await pickSavePath('导出 SQL INSERT', `${tableName}.sql`, [
-      { name: 'SQL 文件', extensions: ['sql'] },
+    const filePath = await pickSavePath('导出 CSV', '导出结果.csv', [
+      { name: 'CSV 文件', extensions: ['csv'] },
     ]);
     if (!filePath) return;
     setExporting(true);
     try {
+      const req: ExportCsvRequest = {
+        options: { filePath: filePath.endsWith('.csv') ? filePath : `${filePath}.csv` },
+        columns: resultSet.columns,
+        rows: resultSet.rows,
+      };
+      await window.sqlStudio['export:csv'](req);
+      onExportSuccess(req.options.filePath);
+    } catch (err) {
+      window.alert(`导出失败：${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setExporting(false);
+      close();
+    }
+  };
+
+  const exportInsert = async () => {
+    if (!resultSet) return;
+    setPendingInsert(true);
+    close();
+  };
+
+  const doExportInsert = async () => {
+    if (!resultSet || !tableName.trim()) return;
+    setExporting(true);
+    setPendingInsert(false);
+    try {
+      const filePath = await pickSavePath('导出 SQL INSERT', `${tableName.trim()}.sql`, [
+        { name: 'SQL 文件', extensions: ['sql'] },
+      ]);
+      if (!filePath) { setExporting(false); return; }
       const req: ExportInsertRequest = {
-        options: { filePath, tableName },
+        options: { filePath, tableName: tableName.trim() },
         columns: resultSet.columns,
         rows: resultSet.rows,
       };
@@ -102,7 +132,7 @@ export function ExportMenu() {
       window.alert(`导出失败：${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setExporting(false);
-      close();
+      setTableName('');
     }
   };
 
@@ -131,12 +161,58 @@ export function ExportMenu() {
             <button
               className="export-item"
               disabled={exporting}
+              onClick={() => void exportCsv()}
+            >
+              导出 CSV
+            </button>
+            <button
+              className="export-item"
+              disabled={exporting}
               onClick={() => void exportInsert()}
             >
               导出 SQL INSERT
             </button>
           </div>
         </>
+      )}
+      {pendingInsert && (
+        <div className="modal-overlay" onClick={() => setPendingInsert(false)}>
+          <div className="modal-panel export-table-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>导出 SQL INSERT</h3>
+              <button className="modal-close" onClick={() => setPendingInsert(false)} title="关闭">
+                ✕
+              </button>
+            </div>
+            <div className="modal-body export-table-body">
+              <label className="export-table-label">
+                目标表名
+                <input
+                  className="export-table-input"
+                  value={tableName}
+                  autoFocus
+                  placeholder="如 orders"
+                  onChange={(e) => setTableName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void doExportInsert();
+                  }}
+                />
+              </label>
+            </div>
+            <div className="export-table-actions">
+              <button className="export-table-btn" onClick={() => setPendingInsert(false)}>
+                取消
+              </button>
+              <button
+                className="export-table-btn primary"
+                disabled={!tableName.trim() || exporting}
+                onClick={() => void doExportInsert()}
+              >
+                {exporting ? '导出中…' : '下一步'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

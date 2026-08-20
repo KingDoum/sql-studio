@@ -61,6 +61,7 @@ describe('IPC 契约', () => {
       'script:save',
       'export:excel',
       'export:insert',
+      'export:csv',
       'history:list',
       'history:add',
       'history:remove',

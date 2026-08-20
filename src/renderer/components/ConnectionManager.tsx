@@ -92,7 +92,7 @@ export function ConnectionManager({ onSelect, selectedId }: ConnectionManagerPro
               className={c.id === selectedId ? 'selected' : ''}
               onClick={() => onSelect(c.id)}
             >
-              <span className={`conn-status conn-status-${status ?? 'ok'}`} title={
+              <span className={`conn-status conn-status-${status ?? 'unknown'}`} title={
                 status === 'testing' ? '测试中…'
                 : status === 'ok' ? '连接正常'
                 : status === 'error' ? '连接失败'

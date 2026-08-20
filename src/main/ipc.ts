@@ -82,6 +82,7 @@ export function registerIpc(deps: IpcDeps, ipcMain: IpcMain): void {
   handle(IPC_CHANNELS['connections:save'], (arg) => deps.metadataStore.saveConnection(arg));
   handle(IPC_CHANNELS['connections:remove'], (arg) => {
     deps.connectionManager.closePool(arg.id);
+    schemaCaches.delete(arg.id);
     return { removed: deps.metadataStore.removeConnection(arg.id) };
   });
   handle(IPC_CHANNELS['connections:test'], (arg) => deps.connectionManager.testConnection(arg));

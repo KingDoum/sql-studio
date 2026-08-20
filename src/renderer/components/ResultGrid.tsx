@@ -99,7 +99,13 @@ export function ResultGrid({ columns, rows }: ResultGridProps) {
       setSortCol(ci);
       setSortDir('asc');
     } else {
-      setSortDir((d) => (d === 'asc' ? 'desc' : 'none'));
+      // 第三次点击回到 none 时同步重置 sortCol，避免无效重渲染与样式残留
+      if (sortDir === 'asc') {
+        setSortDir('desc');
+      } else {
+        setSortDir('none');
+        setSortCol(null);
+      }
     }
   };
 

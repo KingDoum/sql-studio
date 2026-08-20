@@ -7,33 +7,75 @@
   --bg: #16171f;
   --bg-panel: #1e1f29;
   --bg-elevated: #262738;
+  --bg-raised: #1f2030;
   --bg-hover: #2c2d40;
-  --border: #30314a;
+  --bg-active: #323350;
+  --statusbar-bg: #151621;
+  --input-bg: #1c1d28;
+  --input-border: #3d3f52;
+  --border: #2b2d3a;
+  --border-subtle: rgba(43, 45, 58, 0.5);
 
   /* 强调色（青色系渐变） */
   --accent: #00b3a4;
   --accent-bright: #00d9c8;
   --accent-dim: #0e8f86;
+  --accent-alpha: rgba(0, 179, 164, 0.15);
+  --accent-alpha-hover: rgba(0, 179, 164, 0.25);
 
   /* 文本 */
   --text: #e6e8ef;
   --text-dim: #9ba0b0;
+  --text-light: #b0b5c8;
+  --text-muted: #6b7084;
+  --text-disabled: #555a6e;
   --text-white: #ffffff;
+  --text-link: #58a6ff;
 
   /* 功能色 */
   --success: #34c77b;
+  --success-alpha: rgba(52, 199, 123, 0.15);
   --danger: #f04a5a;
+  --danger-alpha: rgba(240, 74, 90, 0.15);
   --warning: #f5a623;
+  --warning-alpha: rgba(245, 166, 35, 0.15);
   --info: #58a6ff;
+  --info-alpha: rgba(88, 166, 255, 0.15);
+
+  /* 焦点/选中 */
+  --focus-ring: rgba(0, 179, 164, 0.4);
+  --selection-bg: rgba(0, 179, 164, 0.12);
 
   /* 等宽字体（SQL 编辑器） */
   --font-mono: 'JetBrains Mono', Consolas, 'Courier New', monospace;
+
+  /* 字号体系 */
+  --fs-xs: 10px;
+  --fs-sm: 11px;
+  --fs-base: 12px;
+  --fs-md: 13px;
+  --fs-lg: 14px;
+  --fs-xl: 16px;
+
+  /* 间距体系（4px 网格） */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
 
   /* 圆角与阴影规范 */
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 10px;
   --shadow-panel: 0 4px 16px rgba(0, 0, 0, 0.28);
+  --shadow-raise: 0 2px 8px rgba(0, 0, 0, 0.24);
+
+  /* 过渡 */
+  --transition-fast: 120ms;
+  --transition-normal: 200ms;
 }
 
 * {
@@ -42,17 +84,25 @@
 }
 
 *::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
 }
 
 *::-webkit-scrollbar-thumb {
-  background: var(--bg-elevated);
-  border-radius: 5px;
+  background: rgba(121, 121, 121, 0.25);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+  transition: background var(--transition-fast) ease;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: var(--border);
+  background: rgba(121, 121, 121, 0.5);
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 *::-webkit-scrollbar-corner {
@@ -65,11 +115,19 @@ body {
   color: var(--text);
   background: var(--bg);
   user-select: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 input,
 textarea {
   user-select: text;
+}
+
+/* 全局焦点环（键盘可访问性） */
+*:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -1px;
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -163,12 +221,16 @@ textarea {
   animation: pulse 0.8s ease-in-out infinite;
 }
 
+.conn-status-unknown {
+  background: var(--text-muted);
+}
+
 .conn-list li:hover {
   background: var(--bg-hover);
 }
 
 .conn-list li.selected {
-  background: var(--bg-elevated);
+  background: var(--bg-active);
   border-left-color: var(--accent);
 }
 
@@ -240,11 +302,16 @@ textarea {
   font-size: 12px;
   font-family: inherit;
   outline: none;
-  transition: border-color 0.12s;
+  transition: border-color var(--transition-fast) ease, box-shadow var(--transition-fast) ease;
 }
 
 .connection-form input:focus {
   border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.connection-form input::placeholder {
+  color: var(--text-muted);
 }
 
 .connection-form .actions {
@@ -260,7 +327,11 @@ textarea {
   border-radius: var(--radius-sm);
   font-size: 12px;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition: background var(--transition-fast) ease, color var(--transition-fast) ease, border-color var(--transition-fast) ease, box-shadow var(--transition-fast) ease;
+}
+
+.connection-form button:focus-visible {
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .connection-form button[type='submit'] {
@@ -380,7 +451,7 @@ textarea {
   cursor: pointer;
   font-size: 12px;
   color: var(--text);
-  transition: background 0.12s;
+  transition: background var(--transition-fast) ease;
   user-select: none;
   white-space: nowrap;
 }
@@ -402,6 +473,7 @@ textarea {
   font-size: 10px;
   color: var(--text-dim);
   flex-shrink: 0;
+  transition: transform var(--transition-fast) ease;
 }
 
 .table-list {
@@ -682,12 +754,13 @@ textarea {
   padding: 4px 6px 4px 12px;
   font-size: 12px;
   color: var(--text-dim);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   border: 1px solid transparent;
+  border-bottom: 2px solid transparent;
   cursor: pointer;
   white-space: nowrap;
   max-width: 200px;
-  transition: background 0.12s, color 0.12s;
+  transition: background var(--transition-fast) ease, color var(--transition-fast) ease, border-color var(--transition-fast) ease;
 }
 
 .tab:hover {
@@ -698,6 +771,7 @@ textarea {
 .tab.active {
   background: var(--bg-elevated);
   border-color: var(--border);
+  border-bottom-color: var(--accent);
   color: var(--text-white);
 }
 
@@ -1075,17 +1149,9 @@ textarea {
 }
 
 .grid-cell.null-cell {
-  color: var(--text-dim);
-  font-style: italic;
-}
-
-.grid-footer {
-  padding: 4px 10px;
-  font-size: 11px;
-  color: var(--text-dim);
-  border-top: 1px solid var(--border);
-  background: var(--bg-panel);
-  flex-shrink: 0;
+  color: var(--text-muted);
+  font-style: normal;
+  opacity: 0.6;
 }
 
 .grid-toast {
@@ -1118,12 +1184,22 @@ textarea {
   font-size: 11px;
   color: var(--text-dim);
   border-top: 1px solid var(--border);
-  background: var(--bg-panel);
+  background: var(--statusbar-bg);
   flex-shrink: 0;
 }
 
 .status-warn {
   color: var(--warning);
+}
+
+/* ── 结果页脚（与状态栏区分）── */
+.grid-footer {
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--text-dim);
+  border-top: 1px solid var(--border);
+  background: var(--statusbar-bg);
+  flex-shrink: 0;
 }
 
 /* ─────────────────────────────────────────────────────────────

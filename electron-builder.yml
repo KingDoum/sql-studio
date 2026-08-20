@@ -1,4 +1,4 @@
-# electron-builder 打包配置（任务 13 会完善图标与安装包细节）
+# electron-builder 打包配置
 appId: com.sqlstudio.app
 productName: SQL Studio
 directories:
@@ -20,3 +20,12 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: SQL Studio
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
+  category: Development

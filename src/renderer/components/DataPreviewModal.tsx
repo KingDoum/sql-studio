@@ -63,8 +63,8 @@ export function DataPreviewModal({ open, connectionId, database, table, onClose 
           {!loading && !error && result && (
             <ResultGrid columns={result.columns} rows={result.rows} />
           )}
-          {!loading && !error && result && result.truncated && (
-            <div className="preview-truncated">⚠ 已截断，仅显示前 {result.rows.length} 行</div>
+          {!loading && !error && result && (
+            <div className="preview-truncated">预览模式：最多显示前 100 行（完整数据请在编辑器中执行 SELECT 查看）</div>
           )}
         </div>
       </div>

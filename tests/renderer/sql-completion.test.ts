@@ -146,6 +146,9 @@ describe('extractTableAliases', () => {
       u: 'users', o: 'orders',
     });
   });
+  it('不误匹配 SELECT 列表中的逗号（SELECT a, b FROM t）', () => {
+    expect(extractTableAliases('SELECT id, name FROM users')).toEqual({});
+  });
   it('空前缀返回空', () => {
     expect(extractTableAliases('')).toEqual({});
   });

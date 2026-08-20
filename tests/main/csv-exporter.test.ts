@@ -36,6 +36,16 @@ describe('escapeCsvField', () => {
   it('二进制 → [BINARY]', () => {
     expect(escapeCsvField(new Uint8Array([1, 2]))).toBe('[BINARY]');
   });
+
+  it('Excel 公式注入防护：= + - @ 开头前缀单引号', () => {
+    expect(escapeCsvField('=SUM(A1)')).toBe("'=SUM(A1)");
+    expect(escapeCsvField('+1+1')).toBe("'+1+1");
+    expect(escapeCsvField('-1')).toBe("'-1");
+    expect(escapeCsvField('@cmd')).toBe("'@cmd");
+    // 普通文本不受影响
+    expect(escapeCsvField('abc')).toBe('abc');
+    expect(escapeCsvField('0.5')).toBe('0.5');
+  });
 });
 
 describe('rowToCsvLine', () => {

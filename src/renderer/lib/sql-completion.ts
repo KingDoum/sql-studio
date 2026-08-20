@@ -96,23 +96,40 @@ export function extractTableAliases(prefix: string): Record<string, string> {
     const table = m[1] ?? m[2] ?? '';
     const aliasRaw = m[3] ?? m[4] ?? '';
     const alias = aliasRaw.replace(/`/g, '');
-    if (alias && alias.toLowerCase() !== table.toLowerCase()) {
+    if (alias && alias.toLowerCase() !== table.toLowerCase() && !isKeyword(table) && !isKeyword(alias)) {
       aliases[alias.toLowerCase()] = table;
     }
   }
   // 逗号分隔的隐式 JOIN：`FROM t1 a, t2 b` 中 t2 b 前面没有关键字
-  // 对所有已解析出的别名段整体再扫一遍逗号模式
+  // 扫描所有 FROM/JOIN 关键字之后的逗号，避免误匹配 SELECT 列表中的逗号
+  const fromStart = Math.max(
+    prefix.lastIndexOf(' FROM '),
+    prefix.lastIndexOf(' JOIN '),
+    prefix.lastIndexOf(' INTO '),
+    prefix.lastIndexOf(' UPDATE '),
+    prefix.lastIndexOf(' TABLE '),
+  );
+  if (fromStart < 0) return aliases;
+  const afterFrom = prefix.slice(fromStart);
+  // 只扫描 FROM/JOIN 段内的逗号（到第一个 WHERE/JOIN/ORDER/GROUP/HAVING/LIMIT 为止，除 JOIN 外）
+  const clauseEnd = afterFrom.search(/\b(?:WHERE|ORDER\s+BY|GROUP\s+BY|HAVING|LIMIT)\b/i);
+  const fromClause = clauseEnd > 0 ? afterFrom.slice(0, clauseEnd) : afterFrom;
   const commaRe = /,\s*(?:`([^`]+)`|([\w$]+))(?:\s+AS\s+|\s+)(?:`([^`]+)`|([\w$]+))(?=\s|,|$)/gi;
   let cm: RegExpExecArray | null;
-  while ((cm = commaRe.exec(prefix)) !== null) {
+  while ((cm = commaRe.exec(fromClause)) !== null) {
     const table = cm[1] ?? cm[2] ?? '';
     const aliasRaw = cm[3] ?? cm[4] ?? '';
     const alias = aliasRaw.replace(/`/g, '');
-    if (alias && alias.toLowerCase() !== table.toLowerCase()) {
+    if (alias && alias.toLowerCase() !== table.toLowerCase() && !isKeyword(table) && !isKeyword(alias)) {
       aliases[alias.toLowerCase()] = table;
     }
   }
   return aliases;
+}
+
+/** 简单的 SQL 关键字检测（防正则误匹配 SELECT 列表中的逗号分隔项）。 */
+function isKeyword(word: string): boolean {
+  return SQL_KEYWORDS.includes(word.toUpperCase());
 }
 
 /** 是否以 `.` 结尾（需要补字段/表）。 */

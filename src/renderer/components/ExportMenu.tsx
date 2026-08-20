@@ -120,7 +120,7 @@ export function ExportMenu() {
       const filePath = await pickSavePath('导出 SQL INSERT', `${tableName.trim()}.sql`, [
         { name: 'SQL 文件', extensions: ['sql'] },
       ]);
-      if (!filePath) { setExporting(false); return; }
+      if (!filePath) return; // 取消保存对话框：finally 统一复位
       const req: ExportInsertRequest = {
         options: { filePath, tableName: tableName.trim() },
         columns: resultSet.columns,

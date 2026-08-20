@@ -25,7 +25,7 @@ function App() {
   const [showFavorites, setShowFavorites] = useState(false);
   const [showAiSettings, setShowAiSettings] = useState(false);
   const [aiSettingsVersion, setAiSettingsVersion] = useState(0);
-  const [preview, setPreview] = useState<{ database: string; table: string } | null>(null);
+  const [preview, setPreview] = useState<{ connectionId: string; database: string; table: string } | null>(null);
   const sqlEditorRef = useRef<SqlEditorHandle | null>(null);
   const {
     tabs,
@@ -218,7 +218,8 @@ function App() {
 
   // 数据预览 → 弹窗展示前 100 行（不污染编辑器标签）
   const handlePreviewTable = (db: string, table: string) => {
-    setPreview({ database: db, table });
+    if (!selectedId) return;
+    setPreview({ connectionId: selectedId, database: db, table });
   };
 
   // 双击字段 → 插入到编辑器光标处（体验优化 §14）
@@ -338,10 +339,10 @@ function App() {
         onClose={() => setShowAiSettings(false)}
         onSettingsChanged={() => setAiSettingsVersion((v) => v + 1)}
       />
-      {preview && selectedId && (
+      {preview && preview.connectionId === selectedId && (
         <DataPreviewModal
           open
-          connectionId={selectedId}
+          connectionId={preview.connectionId}
           database={preview.database}
           table={preview.table}
           onClose={() => setPreview(null)}

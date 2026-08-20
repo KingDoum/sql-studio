@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 import type { CellValue, ExportCsvRequest, ColumnMeta } from '@shared/types';
 
-/** 转义单个 CSV 字段（RFC 4180）。 */
+/** 转义单个 CSV 字段（RFC 4180 + Excel 公式注入防护）。 */
 export function escapeCsvField(value: CellValue | undefined): string {
   if (value === null || value === undefined) return '';
   if (value instanceof Uint8Array) return '[BINARY]';
@@ -23,6 +23,11 @@ export function escapeCsvField(value: CellValue | undefined): string {
     }
   } else {
     s = String(value);
+  }
+  // Excel 公式注入防护：以 = + - @ 开头的文本前置单引号
+  // （CSV 安全最佳实践，Beekeeper 等工具同样处理）
+  if (/^[=+\-@]/.test(s)) {
+    s = `'${s}`;
   }
   // 含逗号/引号/换行 → 双引号包裹，内部引号翻倍
   if (/[",\n\r]/.test(s)) {

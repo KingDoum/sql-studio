@@ -140,6 +140,33 @@ export function extractTableAliases(prefix: string): Record<string, string> {
   return aliases;
 }
 
+/** 从 prefix 中提取 FROM/JOIN 子句引用的表（含库名），用于 SELECT 列表位置字段补全。 */
+export function extractFromTables(prefix: string): Array<{ db?: string; table: string }> {
+  const tables: Array<{ db?: string; table: string }> = [];
+  const re = /(?:FROM|JOIN)\s+(?:`([^`]+)`\s*\.\s*`([^`]+)`|([\w$]+)\s*\.\s*([\w$]+)|`([^`]+)`|([\w$]+))/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(prefix)) !== null) {
+    if (m[1] && m[2]) tables.push({ db: m[1], table: m[2] });
+    else if (m[3] && m[4]) tables.push({ db: m[3], table: m[4] });
+    else if (m[5]) tables.push({ table: m[5] });
+    else if (m[6] && !SQL_KEYWORDS.includes(m[6].toUpperCase())) tables.push({ table: m[6] });
+  }
+  return tables;
+}
+
+/** 返回光标前最近的一个 SQL 关键字（小写）；无则返回 null。 */
+export function lastKeyword(prefix: string): string | null {
+  const words = prefix
+    .replace(/[`'"()]/g, ' ')
+    .split(/[\s,;\n]+/)
+    .filter(Boolean);
+  for (let i = words.length - 1; i >= 0; i--) {
+    const w = words[i].toLowerCase();
+    if (SQL_KEYWORDS.includes(w)) return w;
+  }
+  return null;
+}
+
 /** 简单的 SQL 关键字检测（防正则误匹配 SELECT 列表中的逗号分隔项）。 */
 function isKeyword(word: string): boolean {
   return SQL_KEYWORDS.includes(word.toUpperCase());
@@ -246,6 +273,32 @@ export class SchemaCompletionProvider implements CompletionProvider {
         if (this.snapshot.databases.includes(qualifier)) {
           return this.getTablesForDatabase(qualifier, base, word);
         }
+      }
+    }
+
+    // 2.5) SELECT/WHERE 上下文：从FROM子句取表，光标在字段位置时联想该表字段（含注释）。
+    //      不能直接用 isTableContext（它扫描整段，prefix 含 from 就算表上下文，误伤 SELECT 列表）
+    {
+      const lastKw = lastKeyword(prefix);
+      // FROM/JOIN/UPDATE/INTO 后紧跟的是表名位置，此时走表上下文；其余（SELECT/WHERE/逗号/ON后）走字段
+      const fieldPosition = lastKw === null || ['select', 'where', 'group', 'order', 'having', 'and', 'or', 'on', 'in', 'using', 'values', 'by'].includes(lastKw) || /,\s*$/.test(prefix);
+      if (fieldPosition) {
+        const fromTables = extractFromTables(prefix);
+        if (fromTables.length > 0) {
+        const fromFields = fromTables.map((t) => this.getFromFieldItems(t.db, t.table, base, word));
+        // 合并多个表的字段，去重
+        return Promise.all(fromFields).then((results) => {
+          const merged = results.flat();
+          const seen = new Set<string>();
+          const unique = merged.filter((it) => {
+            const key = `${it.category}:${it.label.toLowerCase()}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+          return sortItems(dedupe(filterByWord([...base, ...unique], word)));
+        });
+      }
       }
     }
 
@@ -372,6 +425,62 @@ export class SchemaCompletionProvider implements CompletionProvider {
         ),
       ),
     );
+  }
+
+  /** 获取 FROM 子句某表的字段候选（用于 SELECT 列表位置补全，显示注释）。 */
+  private async getFromFieldItems(
+    db: string | undefined,
+    table: string,
+    base: CompletionItem[],
+    word: string,
+  ): Promise<CompletionItem[]> {
+    const snapshot = this.snapshot;
+    if (!snapshot) return [];
+
+    // 如果用户输入了库名，用该库；否则使用当前库
+    const effectiveDb = db ?? snapshot.database ?? '';
+    let cols: ColumnMeta[];
+
+    if (effectiveDb === snapshot.database) {
+      cols = snapshot.columnsByTable[table] ?? [];
+      if (cols.length === 0 && this.loader) {
+        const cacheKey = `${effectiveDb}.${table}`;
+        const cached = this.dbColumnsCache.get(cacheKey);
+        if (cached) {
+          cols = cached;
+        } else {
+          try {
+            cols = await this.loader.columns(effectiveDb, table);
+            this.dbColumnsCache.set(cacheKey, cols);
+          } catch {
+            cols = [];
+          }
+        }
+      }
+    } else if (this.loader) {
+      const cacheKey = `${effectiveDb}.${table}`;
+      const cached = this.dbColumnsCache.get(cacheKey);
+      if (cached) {
+        cols = cached;
+      } else {
+        try {
+          cols = await this.loader.columns(effectiveDb, table);
+          this.dbColumnsCache.set(cacheKey, cols);
+        } catch {
+          cols = [];
+        }
+      }
+    } else {
+      cols = [];
+    }
+
+    return cols.map((c) => ({
+      label: c.name,
+      category: 'column' as CompletionCategory,
+      insertText: c.name,
+      detail: c.comment ? `${c.type} · ${c.comment}` : c.type,
+      score: 5,
+    }));
   }
 }
 

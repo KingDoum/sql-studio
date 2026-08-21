@@ -32,6 +32,14 @@ function push(level: DebugLogEntry['level'], message: string, detail?: unknown):
 }
 
 function safeJson(v: unknown): string {
+  // Error 的 message/stack 是不可枚举属性，JSON.stringify 会变成 {}，必须显式提取
+  if (v instanceof Error) {
+    return v.stack ?? `${v.name}: ${v.message}`;
+  }
+  if (v && typeof v === 'object' && 'reason' in (v as Record<string, unknown>)) {
+    const r = (v as { reason?: unknown }).reason;
+    if (r instanceof Error) return r.stack ?? `${r.name}: ${r.message}`;
+  }
   try {
     const s = JSON.stringify(v);
     return s && s.length > 2000 ? `${s.slice(0, 2000)}…` : (s ?? String(v));
@@ -71,7 +79,8 @@ export function enableDebugLogging(): void {
     push('error', `window.onerror: ${e.message}`, e.error);
   });
   window.addEventListener('unhandledrejection', (e) => {
-    push('error', `unhandledrejection: ${safeJson(e.reason)}`);
+    const r = e.reason;
+    push('error', `unhandledrejection: ${r instanceof Error ? (r.stack ?? r.message) : safeJson(r)}`);
   });
 }
 
@@ -83,6 +92,11 @@ export function ensureDebugLogging(enabled: boolean): void {
 
 export function getDebugLogEntries(): DebugLogEntry[] {
   return [...entries];
+}
+
+/** 清空日志缓冲（调试用）。 */
+export function clearDebugLogs(): void {
+  entries.length = 0;
 }
 
 /** 生成可复制的纯文本日志。 */

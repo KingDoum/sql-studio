@@ -1940,6 +1940,12 @@ textarea {
   border-bottom: 1px solid var(--border);
 }
 
+.settings-debug-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .settings-debug-log-title {
   display: flex;
   align-items: center;
@@ -1964,6 +1970,11 @@ textarea {
 .settings-debug-copy:hover {
   border-color: var(--accent);
   color: var(--accent);
+}
+
+.settings-debug-clear:hover {
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 .settings-debug-log-body {

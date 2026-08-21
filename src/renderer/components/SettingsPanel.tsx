@@ -5,9 +5,9 @@
  * - 调试模式：开关 + 实时日志列表 + 一键复制调试日志
  */
 import { useEffect, useState } from 'react';
-import { X, Sun, Moon, Bug, Copy, Check } from 'lucide-react';
+import { X, Sun, Moon, Bug, Copy, Check, Trash2 } from 'lucide-react';
 import type { ThemeMode } from '@shared/types';
-import { getDebugLogEntries, formatDebugLogText, ensureDebugLogging, type DebugLogEntry } from '@renderer/lib/debug-log';
+import { getDebugLogEntries, formatDebugLogText, ensureDebugLogging, clearDebugLogs, type DebugLogEntry } from '@renderer/lib/debug-log';
 
 export interface SettingsPanelProps {
   open: boolean;
@@ -42,6 +42,11 @@ export function SettingsPanel({
     const timer = window.setInterval(() => setLogs(getDebugLogEntries()), 2000);
     return () => window.clearInterval(timer);
   }, [open, debugMode]);
+
+  const handleClear = () => {
+    clearDebugLogs();
+    setLogs([]);
+  };
 
   const handleCopy = async () => {
     try {
@@ -101,10 +106,16 @@ export function SettingsPanel({
                   <span className="settings-debug-log-title">
                     <Bug size={13} /> 最近日志（{logs.length} 条）
                   </span>
-                  <button className="settings-debug-copy" onClick={() => void handleCopy()}>
-                    {copied ? <Check size={13} /> : <Copy size={13} />}
-                    <span>{copied ? '已复制' : '一键复制'}</span>
-                  </button>
+                  <div className="settings-debug-actions">
+                    <button className="settings-debug-copy" onClick={() => void handleCopy()}>
+                      {copied ? <Check size={13} /> : <Copy size={13} />}
+                      <span>{copied ? '已复制' : '一键复制'}</span>
+                    </button>
+                    <button className="settings-debug-copy settings-debug-clear" onClick={handleClear} title="清空日志">
+                      <Trash2 size={13} />
+                      <span>清空</span>
+                    </button>
+                  </div>
                 </div>
                 <pre className="settings-debug-log-body">
                   {logs.length === 0

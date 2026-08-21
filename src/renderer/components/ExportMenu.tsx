@@ -39,8 +39,16 @@ export function ExportMenu() {
 
   /** 弹出原生保存对话框，返回路径；取消返回 null。 */
   const pickSavePath = async (title: string, filename: string, filters: Array<{ name: string; extensions: string[] }>): Promise<string | null> => {
-    const sep = process.platform === 'win32' ? '\\' : '/';
-    const defaultPath = lastDirRef.current ? `${lastDirRef.current.replace(/[\\/]$/, '')}${sep}${filename}` : filename;
+    // 渲染进程（contextIsolation + nodeIntegration:false）不可直接用 process.platform，
+    // 用 navigator.userAgent 判断平台（Electron 环境安全）
+    let defaultPath: string;
+    try {
+      const isWin = /Windows/i.test(window.navigator.userAgent);
+      const sep = isWin ? '\\' : '/';
+      defaultPath = lastDirRef.current ? `${lastDirRef.current.replace(/[\\/]$/, '')}${sep}${filename}` : filename;
+    } catch {
+      defaultPath = filename;
+    }
     try {
       const filePath = await window.sqlStudio['dialog:showSaveDialog']({ title, defaultPath, filters });
       return filePath;
@@ -64,9 +72,14 @@ export function ExportMenu() {
 
   const exportExcel = async () => {
     if (!resultSet) return;
-    const filePath = await pickSavePath('导出 Excel', '导出结果.xlsx', [
-      { name: 'Excel 文件', extensions: ['xlsx'] },
-    ]);
+    let filePath: string | null = null;
+    try {
+      filePath = await pickSavePath('导出 Excel', '导出结果.xlsx', [
+        { name: 'Excel 文件', extensions: ['xlsx'] },
+      ]);
+    } catch {
+      filePath = null;
+    }
     if (!filePath) return;
     setExporting(true);
     try {
@@ -87,9 +100,14 @@ export function ExportMenu() {
 
   const exportCsv = async () => {
     if (!resultSet) return;
-    const filePath = await pickSavePath('导出 CSV', '导出结果.csv', [
-      { name: 'CSV 文件', extensions: ['csv'] },
-    ]);
+    let filePath: string | null = null;
+    try {
+      filePath = await pickSavePath('导出 CSV', '导出结果.csv', [
+        { name: 'CSV 文件', extensions: ['csv'] },
+      ]);
+    } catch {
+      filePath = null;
+    }
     if (!filePath) return;
     setExporting(true);
     try {

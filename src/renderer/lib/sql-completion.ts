@@ -162,7 +162,7 @@ export function lastKeyword(prefix: string): string | null {
     .filter(Boolean);
   for (let i = words.length - 1; i >= 0; i--) {
     const w = words[i].toLowerCase();
-    if (SQL_KEYWORDS.includes(w)) return w;
+    if (SQL_KEYWORDS.some((k) => k.toLowerCase() === w)) return w;
   }
   return null;
 }
@@ -276,14 +276,15 @@ export class SchemaCompletionProvider implements CompletionProvider {
       }
     }
 
-    // 2.5) SELECT/WHERE 上下文：从FROM子句取表，光标在字段位置时联想该表字段（含注释）。
-    //      不能直接用 isTableContext（它扫描整段，prefix 含 from 就算表上下文，误伤 SELECT 列表）
+    // 2.5) SELECT/WHERE 上下文：从 FROM 子句取表，光标在字段位置时联想该表字段（含注释）。
+    //      document（整篇 SQL）优先——用户可能先写完 from，再回光标到 select 列表，此时 prefix 不含 from
     {
+      const document = context.document ?? prefix;
       const lastKw = lastKeyword(prefix);
-      // FROM/JOIN/UPDATE/INTO 后紧跟的是表名位置，此时走表上下文；其余（SELECT/WHERE/逗号/ON后）走字段
-      const fieldPosition = lastKw === null || ['select', 'where', 'group', 'order', 'having', 'and', 'or', 'on', 'in', 'using', 'values', 'by'].includes(lastKw) || /,\s*$/.test(prefix);
+      const tableKwSet = new Set(['from', 'join', 'into', 'update', 'table']);
+      const fieldPosition = lastKw === null || !tableKwSet.has(lastKw) || /,\s*$/.test(prefix);
       if (fieldPosition) {
-        const fromTables = extractFromTables(prefix);
+        const fromTables = extractFromTables(document);
         if (fromTables.length > 0) {
         const fromFields = fromTables.map((t) => this.getFromFieldItems(t.db, t.table, base, word));
         // 合并多个表的字段，去重

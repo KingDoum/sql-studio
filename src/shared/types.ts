@@ -388,6 +388,8 @@ export interface CompletionContext {
   connectionId?: string;
   /** 当前数据库（可选）。 */
   database?: string;
+  /** 整篇 SQL（可选，用于从全文提取 FROM 子句，实现字段位置跨语句补全）。 */
+  document?: string;
 }
 
 /** 补全项分类，用于图标与配色区分。 */

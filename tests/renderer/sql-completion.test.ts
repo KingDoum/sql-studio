@@ -11,6 +11,8 @@ import {
   isDotEnding,
   extractTableAliases,
   parseQualifiedDot,
+  extractFromTables,
+  lastKeyword,
   type SchemaSnapshot,
 } from '@renderer/lib/sql-completion';
 
@@ -172,6 +174,55 @@ describe('parseQualifiedDot', () => {
     const r = parseQualifiedDot('SELECT * FROM `app`.`users`.');
     expect(r).toEqual({ db: 'app', table: 'users' });
   });
+});
+
+describe('extractFromTables / lastKeyword', () => {
+  it('extractFromTables 识别 FROM 库.表', () => {
+    
+    expect(extractFromTables('select a from ods_yewu.ods_listing_fba_fees')).toEqual([
+      { db: 'ods_yewu', table: 'ods_listing_fba_fees' },
+    ]);
+  });
+  it('extractFromTables 识别 FROM 表 与 JOIN', () => {
+    
+    expect(extractFromTables('from users u join orders o on u.id=o.uid')).toEqual([
+      { table: 'users' }, { table: 'orders' },
+    ]);
+  });
+  it('lastKeyword 返回光标前最近关键字', () => {
+    
+    expect(lastKeyword('select name from users where')).toBe('where');
+    expect(lastKeyword('select name')).toBe('select');
+    expect(lastKeyword('from users ')).toBe('from');
+  });
+});
+
+describe('SELECT 位置字段补全（FROM 子句联动）', () => {
+  it('select 列表位置提示 FROM 表字段（含注释）', async () => {
+    
+    const loader = {
+      tables: vi.fn(async () => []),
+      columns: vi.fn(async () => [
+        { name: 'event', type: 'varchar', nullable: true, isPrimary: false, isUnique: false, comment: '事件类型' },
+        { name: 'amount', type: 'decimal', nullable: true, isPrimary: false, isUnique: false },
+      ]),
+    };
+    const snapshot = {
+      connectionId: 'c1', database: 'app', databases: ['app', 'ods_yewu'],
+      tables: [], columnsByTable: {},
+    };
+    const p = new SchemaCompletionProvider(snapshot, loader);
+    const items = await p.provideCompletions({
+      prefix: 'select event',
+      word: 'event',
+      document: 'select event from ods_yewu.ods_listing_fba_fees',
+    });
+    expect(loader.columns).toHaveBeenCalledWith('ods_yewu', 'ods_listing_fba_fees');
+    const ev = items.find((i) => i.label === 'event');
+    expect(ev).toBeTruthy();
+    expect(ev?.detail).toContain('事件类型');
+  });
+
 });
 
 describe('跨库补全（异步 loader）', () => {

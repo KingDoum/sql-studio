@@ -279,6 +279,7 @@ const beforeMount: BeforeMount = useCallback((monaco) => {
           model: {
             getWordUntilPosition(pos: unknown): { word: string; startColumn: number; endColumn: number };
             getValueInRange(range: unknown): string;
+            getValue(): string;
           },
           position: { lineNumber: number; column: number },
         ) => {
@@ -296,6 +297,7 @@ const beforeMount: BeforeMount = useCallback((monaco) => {
             word: word.word,
             connectionId: snapshotRef.current?.connectionId,
             database: snapshotRef.current?.database,
+            document: model.getValue(),
           });
           return {
             suggestions: items.map((it) => ({

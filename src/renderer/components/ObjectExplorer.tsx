@@ -87,6 +87,7 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable, onIn
         }),
       );
     } catch (err) {
+      if (reqId !== requestIdRef.current) return;
       setError(err instanceof Error ? err.message : `加载字段失败：${db}.${table}`);
     }
   };

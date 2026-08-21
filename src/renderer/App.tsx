@@ -118,9 +118,9 @@ function App() {
   } = useWorkspace();
   const activeTab = useActiveTab();
 
-  const handleSelectConnection = (id: string) => {
+  const handleSelectConnection = (id: string | null) => {
     setSelectedId(id);
-    setConnection(id);
+    setConnection(id ?? null);
   };
 
   // ── 脚本动作（新建/打开/保存/另存为）──

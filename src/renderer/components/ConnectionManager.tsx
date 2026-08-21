@@ -12,7 +12,7 @@ import type { ConnectionSummary } from '@shared/types';
 import { ConnectionForm } from './ConnectionForm';
 
 export interface ConnectionManagerProps {
-  onSelect: (id: string) => void;
+  onSelect: (id: string | null) => void;
   selectedId?: string;
 }
 
@@ -69,8 +69,14 @@ export function ConnectionManager({ onSelect, selectedId }: ConnectionManagerPro
   };
 
   const handleRemove = async (id: string) => {
-    await window.sqlStudio['connections:remove']({ id });
-    await refresh();
+    if (!window.confirm('确定删除此连接？')) return;
+    try {
+      await window.sqlStudio['connections:remove']({ id });
+      onSelect(null); // 清除选中状态
+      await refresh();
+    } catch (err) {
+      window.alert(`删除失败：${err instanceof Error ? err.message : String(err)}`);
+    }
   };
 
   if (loading) return <div className="conn-manager">加载中…</div>;

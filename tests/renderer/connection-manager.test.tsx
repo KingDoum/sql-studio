@@ -59,6 +59,7 @@ describe('ConnectionManager', () => {
 
   it('删除连接', async () => {
     const store = mockSqlStudio();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
     render(<ConnectionManager onSelect={() => {}} />);
     fireEvent.click(await screen.findByText('删除'));
     await waitFor(() => expect(store['connections:remove']).toHaveBeenCalledWith({ id: 'c1' }));

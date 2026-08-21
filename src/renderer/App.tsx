@@ -31,6 +31,8 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>('dark');
   const [debugMode, setDebugMode] = useState(false);
+  const [fontSize, setFontSize] = useState(12);
+  const [fontFamily, setFontFamily] = useState('jetbrains');
   const [preview, setPreview] = useState<{ connectionId: string; database: string; table: string } | null>(null);
   const sqlEditorRef = useRef<SqlEditorHandle | null>(null);
   // 启动时读取主题/调试模式设置并应用
@@ -44,6 +46,13 @@ function App() {
         ensureDebugLogging(true);
       }
     });
+    // 读取字体设置
+    void window.sqlStudio['settings:get']({ key: 'fontSize' }).then((v) => {
+      if (v) { const n = parseInt(v, 10); if (n >= 10 && n <= 18) applyFontSize(n); }
+    });
+    void window.sqlStudio['settings:get']({ key: 'fontFamily' }).then((v) => {
+      if (v) setFontFamily(v);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -54,6 +63,36 @@ function App() {
   };
 
   const handleThemeChange = (t: ThemeMode) => applyTheme(t);
+
+  const applyFontSize = (size: number) => {
+    setFontSize(size);
+    const root = document.documentElement;
+    root.style.setProperty('--fs-xs', `${Math.max(size - 2, 9)}px`);
+    root.style.setProperty('--fs-sm', `${Math.max(size - 1, 10)}px`);
+    root.style.setProperty('--fs-base', `${size}px`);
+    root.style.setProperty('--fs-md', `${Math.min(size + 1, 20)}px`);
+    root.style.setProperty('--fs-lg', `${Math.min(size + 2, 22)}px`);
+    root.style.setProperty('--fs-xl', `${Math.min(size + 4, 24)}px`);
+    void window.sqlStudio['settings:set']({ key: 'fontSize', value: String(size) });
+  };
+
+  const FONT_FAMILIES: Record<string, string> = {
+    jetbrains: "'JetBrains Mono', Consolas, 'Courier New', monospace",
+    firacode: "'Fira Code', 'JetBrains Mono', Consolas, monospace",
+    sourcecode: "'Source Code Pro', 'JetBrains Mono', Consolas, monospace",
+    cascadia: "'Cascadia Code', 'JetBrains Mono', Consolas, monospace",
+    system: "Consolas, 'Courier New', monospace",
+  };
+
+  const handleFontSizeChange = (size: number) => applyFontSize(size);
+
+  const handleFontFamilyChange = (family: string) => {
+    setFontFamily(family);
+    const font = FONT_FAMILIES[family] ?? FONT_FAMILIES.jetbrains;
+    document.documentElement.style.setProperty('--font-mono', font);
+    void window.sqlStudio['settings:set']({ key: 'fontFamily', value: family });
+  };
+
 
   const handleDebugModeChange = (enabled: boolean) => {
     setDebugMode(enabled);
@@ -376,8 +415,12 @@ function App() {
         open={showSettings}
         theme={theme}
         debugMode={debugMode}
+        fontSize={fontSize}
+        fontFamily={fontFamily}
         onThemeChange={handleThemeChange}
         onDebugModeChange={handleDebugModeChange}
+        onFontSizeChange={handleFontSizeChange}
+        onFontFamilyChange={handleFontFamilyChange}
         onClose={() => setShowSettings(false)}
       />
       <AiSettingsPanel

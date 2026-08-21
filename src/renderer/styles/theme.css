@@ -73,6 +73,24 @@
   --shadow-panel: 0 4px 16px rgba(0, 0, 0, 0.28);
   --shadow-raise: 0 2px 8px rgba(0, 0, 0, 0.24);
 
+  /* 磨砂玻璃（frosted glass） */
+  --glass-bg: rgba(30, 31, 41, 0.75);
+  --glass-bg-light: rgba(30, 31, 41, 0.55);
+  --glass-border: rgba(255, 255, 255, 0.06);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  --glass-blur: 12px;
+
+  /* 光效与渐变 */
+  --accent-gradient: linear-gradient(135deg, #00b3a4, #00d9c8);
+  --accent-glow: 0 0 20px rgba(0, 179, 164, 0.3);
+  --border-glow: 0 0 1px rgba(0, 179, 164, 0.15);
+  --hover-glow: 0 0 12px rgba(0, 179, 164, 0.1);
+
+  /* 字体系统（可动态切换） */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-size: 12px;  /* 基础字号，用于设置面板滑块调节 */
+  --font-mono-size: 13px;  /* 编辑器等宽字体字号 */
+
   /* 过渡 */
   --transition-fast: 120ms;
   --transition-normal: 200ms;
@@ -1877,6 +1895,76 @@ textarea {
   font-weight: 600;
 }
 
+.settings-section-hint {
+  margin: 4px 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+/* 字体设置 */
+.settings-font-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.settings-font-label {
+  width: 36px;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.settings-font-range {
+  flex: 1;
+  height: 4px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--bg-elevated);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.settings-font-range::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-panel);
+  box-shadow: 0 0 4px rgba(0, 179, 164, 0.3);
+  cursor: pointer;
+  transition: transform 0.12s;
+}
+
+.settings-font-range::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+.settings-font-value {
+  width: 36px;
+  text-align: right;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-font-select {
+  flex: 1;
+  padding: 5px 8px;
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  outline: none;
+  cursor: pointer;
+}
+
 .settings-theme-row {
   display: flex;
   gap: 8px;
@@ -2008,4 +2096,96 @@ textarea {
   font-size: var(--fs-xs);
   font-weight: 500;
   vertical-align: middle;
+}
+
+/* ═══════════════════════════════════════════════
+ * 质感升级：磨砂玻璃 + 光效 + 微交互
+ * ═══════════════════════════════════════════════ */
+
+/* —— 背景微渐变（让磨砂效果可见） —— */
+.app-shell {
+  background: linear-gradient(135deg, #14151c 0%, #161721 50%, #181a26 100%);
+}
+
+/* —— 侧边栏磨砂 —— */
+.sidebar {
+  background: rgba(30, 31, 41, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-right: 1px solid var(--glass-border);
+}
+
+/* —— 弹窗磨砂玻璃 —— */
+.modal-overlay {
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.modal-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+/* —— 下拉菜单磨砂 —— */
+.export-dropdown {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+/* —— 按钮微光效 —— */
+.sql-editor-btn:hover,
+.toolbar-btn:hover,
+.export-item:hover,
+.settings-theme-btn:hover,
+.settings-debug-copy:hover {
+  box-shadow: var(--hover-glow);
+  border-color: var(--accent-dim);
+}
+
+/* —— 按钮激活态 —— */
+.sql-editor-btn:active,
+.toolbar-btn:active,
+.export-item:active {
+  transform: scale(0.97);
+  transition: transform 0.1s ease;
+}
+
+/* —— 输入框聚焦 —— */
+input:focus, textarea:focus, select:focus {
+  box-shadow: 0 0 0 2px var(--focus-ring);
+  border-color: var(--accent) !important;
+  transition: box-shadow var(--transition-fast) ease, border-color var(--transition-fast) ease;
+}
+
+/* —— 标签页底栏 —— */
+.tabs-bar {
+  border-bottom: 1px solid var(--glass-border);
+  background: rgba(22, 23, 31, 0.5);
+}
+
+/* —— 标签页单个 —— */
+.tab {
+  border-bottom: 2px solid transparent;
+  transition: border-color var(--transition-fast) ease, background var(--transition-fast) ease;
+}
+
+.tab.active {
+  border-bottom-color: var(--accent-bright);
+  background: rgba(0, 179, 164, 0.06);
+}
+
+/* —— 状态栏文字刻度 —— */
+.sql-editor-db {
+  background: var(--accent-alpha);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  font-size: var(--fs-xs);
 }

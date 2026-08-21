@@ -13,8 +13,12 @@ export interface SettingsPanelProps {
   open: boolean;
   theme: ThemeMode;
   debugMode: boolean;
+  fontSize: number;
+  fontFamily: string;
   onThemeChange(theme: ThemeMode): void;
   onDebugModeChange(enabled: boolean): void;
+  onFontSizeChange(size: number): void;
+  onFontFamilyChange(family: string): void;
   onClose(): void;
 }
 
@@ -23,12 +27,24 @@ const THEME_OPTIONS: Array<{ value: ThemeMode; label: string; icon: typeof Sun }
   { value: 'light', label: '白天', icon: Sun },
 ];
 
+const FONT_OPTIONS = [
+  { value: 'jetbrains', label: 'JetBrains Mono' },
+  { value: 'firacode', label: 'Fira Code' },
+  { value: 'sourcecode', label: 'Source Code Pro' },
+  { value: 'cascadia', label: 'Cascadia Code' },
+  { value: 'system', label: '系统默认' },
+];
+
 export function SettingsPanel({
   open,
   theme,
   debugMode,
+  fontSize,
+  fontFamily,
   onThemeChange,
   onDebugModeChange,
+  onFontSizeChange,
+  onFontFamilyChange,
   onClose,
 }: SettingsPanelProps) {
   const [logs, setLogs] = useState<DebugLogEntry[]>([]);
@@ -86,6 +102,37 @@ export function SettingsPanel({
                   </button>
                 );
               })}
+            </div>
+            <p className="settings-section-hint">选择界面主题，磨砂玻璃质感自动跟随</p>
+          </section>
+
+          {/* 字体设置 */}
+          <section className="settings-section">
+            <h4>字体</h4>
+            <div className="settings-font-row">
+              <span className="settings-font-label">字号</span>
+              <input
+                className="settings-font-range"
+                type="range"
+                min={10}
+                max={18}
+                step={1}
+                value={fontSize}
+                onChange={(e) => onFontSizeChange(Number(e.target.value))}
+              />
+              <span className="settings-font-value">{fontSize}px</span>
+            </div>
+            <div className="settings-font-row">
+              <span className="settings-font-label">风格</span>
+              <select
+                className="settings-font-select"
+                value={fontFamily}
+                onChange={(e) => onFontFamilyChange(e.target.value)}
+              >
+                {FONT_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
             </div>
           </section>
 

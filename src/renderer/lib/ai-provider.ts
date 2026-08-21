@@ -37,6 +37,7 @@ export function createAiInlineProvider(
     _token: unknown,
   ) => Promise<{ items: Array<{ insertText: string; range: unknown }> }>;
   dispose: () => void;
+  disposeInlineCompletions?: () => void;
 } {
   let cancelled = false;
   return {
@@ -88,6 +89,9 @@ export function createAiInlineProvider(
       }
     },
     dispose: () => {
+      cancelled = true;
+    },
+    disposeInlineCompletions: () => {
       cancelled = true;
     },
   };

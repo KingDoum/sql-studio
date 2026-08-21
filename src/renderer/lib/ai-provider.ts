@@ -76,7 +76,7 @@ export function createAiInlineProvider(
                 startLineNumber: position.lineNumber,
                 endLineNumber: position.lineNumber,
                 startColumn: position.column,
-                endColumn: position.column + resp.suggestion.length,
+                endColumn: position.column,  // 仅插入，不替换后续文本
               },
             },
           ],

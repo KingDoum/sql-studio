@@ -10,16 +10,30 @@
 import type { CellValue } from '@shared/types';
 
 /** 单元格 → 展示字符串。 */
+/** ISO 日期时间正则（匹配 YYYY-MM-DDTHH:mm:ss 或 YYYY-MM-DD HH:mm:ss 格式）。 */
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}/;
+
+/** 浮点数保留最多 2 位小数，去尾零。 */
+function fmtNumber(v: number): string {
+  if (Number.isInteger(v)) return String(v);
+  // 保留两位小数，去尾零
+  const s = v.toFixed(2);
+  return s.replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '');
+}
+
 export function formatCell(value: CellValue | undefined | null): string {
   if (value === null || value === undefined) return 'NULL';
   if (value instanceof Uint8Array) return `[二进制 ${value.byteLength} 字节]`;
   if (typeof value === 'boolean') return value ? '1' : '0';
   if (typeof value === 'number') {
-    // 大数值保留精度原文；小数值截断显示
-    if (Number.isInteger(value)) return String(value);
-    return String(value);
+    return fmtNumber(value);
   }
-  return String(value);
+  const s = String(value);
+  // 探测 ISO 日期字符串 → 转为本地可读格式（去掉末尾 .000Z 等，空格替代 T）
+  if (ISO_DATE_RE.test(s)) {
+    return s.replace(/T/, ' ').replace(/\.\d+Z?$/, '').replace(/Z$/, '');
+  }
+  return s;
 }
 
 /** 排序比较（NULL 恒小；数值按数；其余字符串）。 */

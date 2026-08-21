@@ -48,10 +48,16 @@ function fail(err: unknown): { ok: false; error: string; errorType?: string } {
  * 构造一个针对某连接的 query executor（多结果集）。
  * 渲染进程仅传 connectionId，明文配置由 metadataStore 在主进程解密取出。
  */
-function makeExecutor(deps: IpcDeps, connectionId: string): (sql: string) => Promise<RawResultSet[]> {
+function makeExecutor(deps: IpcDeps, connectionId: string, database?: string): (sql: string) => Promise<RawResultSet[]> {
   const config = deps.metadataStore.getConnectionConfig(connectionId);
   if (!config) throw new Error(`连接不存在: ${connectionId}`);
-  return (sql: string) => deps.connectionManager.executeMany(config as ConnectionConfig, sql);
+  return (sql: string) => {
+    // 如果传入了 database 且与连接配置不同，自动加 USE 前缀（解决 no database selected）
+    const finalSql = database && database !== config.database
+      ? `USE \`${database.replace(/`/g, '``')}\`;\n${sql}`
+      : sql;
+    return deps.connectionManager.executeMany(config as ConnectionConfig, finalSql);
+  };
 }
 
 function makeSchemaExecutor(deps: IpcDeps, connectionId: string) {
@@ -80,9 +86,17 @@ export function registerIpc(deps: IpcDeps, ipcMain: IpcMain): void {
 
   // 连接管理
   handle(IPC_CHANNELS['connections:list'], () => deps.metadataStore.listConnections());
-  handle(IPC_CHANNELS['connections:save'], (arg) => deps.metadataStore.saveConnection(arg));
-  handle(IPC_CHANNELS['connections:remove'], (arg) => {
-    deps.connectionManager.closePool(arg.id);
+  handle(IPC_CHANNELS['connections:save'], async (arg) => {
+    const summary = deps.metadataStore.saveConnection(arg);
+    // 保存后关闭旧连接池 + 清理 schema 缓存，让新配置立即生效
+    if (arg.id) {
+      try { await deps.connectionManager.closePool(arg.id); } catch {}
+      schemaCaches.delete(arg.id);
+    }
+    return summary;
+  });
+  handle(IPC_CHANNELS['connections:remove'], async (arg) => {
+    try { await deps.connectionManager.closePool(arg.id); } catch {}
     schemaCaches.delete(arg.id);
     return { removed: deps.metadataStore.removeConnection(arg.id) };
   });
@@ -162,7 +176,7 @@ export function registerIpc(deps: IpcDeps, ipcMain: IpcMain): void {
       : `${arg.connectionId}:${++querySeq}`;
     queryAborters.set(queryId, abortController);
     try {
-      const executor = makeExecutor(deps, arg.connectionId);
+      const executor = makeExecutor(deps, arg.connectionId, arg.database);
       const qs = new QueryService(executor);
       const result = await qs.run(arg, abortController.signal);
       // 自动记录历史

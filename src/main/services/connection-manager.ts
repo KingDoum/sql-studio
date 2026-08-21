@@ -235,21 +235,35 @@ export class ConnectionManager {
    * @param config 已解密连接配置
    * @param sql 可能含多条语句的 SQL
    */
-  async executeMany(config: ConnectionConfig, sql: string): Promise<RawResultSet[]> {
+  async executeMany(config: ConnectionConfig, sql: string, signal?: AbortSignal): Promise<RawResultSet[]> {
     const conn = await this.factory.createConnection({
       ...this.toMysqlConfig(config),
       multipleStatements: true,
       connectionLimit: 1,
     });
+    // 取消信号 → 销毁连接（中止 MySQL 查询）
+    if (signal) {
+      if (signal.aborted) {
+        try { await conn.end(); } catch {}
+        throw new DOMException('已取消', 'AbortError');
+      }
+      signal.addEventListener('abort', () => {
+        try { (conn as unknown as { destroy(): void }).destroy(); } catch {}
+      }, { once: true });
+    }
     const started = Date.now();
     try {
       const res = await (conn as unknown as { query(sql: string): Promise<unknown> }).query(sql);
       // mysql2 多语句：res 为数组（每个 [rows, fields]）；单语句：res 为 [rows, fields]
       const sets: [QueryRow[], unknown][] = Array.isArray(res)
-        ? // 进一步区分：多语句时 res 形如 [[rows,fields],[rows,fields],...]
-          isResultSetArray(res)
-          ? res
-          : [res as [QueryRow[], unknown]]
+        ? (res as unknown[]).map((item) => {
+            // 逐元素判断：SELECT 返回 [rows, fields]，INSERT/UPDATE 返回 ResultSetHeader（非数组）
+            if (Array.isArray(item) && item.length >= 2 && Array.isArray(item[0])) {
+              return item as [QueryRow[], unknown];
+            }
+            // ResultSetHeader：rows 为空数组，fields 为 item 本身
+            return [[] as QueryRow[], item];
+          })
         : [[[] as QueryRow[], res]];
       return sets.map(([rows, fields]) => normalizeRawSet(rows, fields));
     } finally {
@@ -271,7 +285,9 @@ export class ConnectionManager {
 function isResultSetArray(res: unknown[]): res is [QueryRow[], unknown][] {
   return (
     res.length > 0 &&
-    res.every((item) => Array.isArray(item) && item.length === 2 && Array.isArray((item as unknown[])[0]))
+    // 支持混合类型：INSERT/UPDATE 返回 ResultSetHeader（非数组），SELECT 返回 [rows, fields]
+    (res.every((item) => Array.isArray(item) && item.length === 2 && Array.isArray((item as unknown[])[0])) ||
+     res.some((item) => Array.isArray(item) && item.length === 2 && Array.isArray((item as unknown[])[0])))
   );
 }
 

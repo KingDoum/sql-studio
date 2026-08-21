@@ -48,6 +48,8 @@ export interface SqlEditorProps {
   onSave?(): void;
   /** 当前主题（白天/深色，控制 Monaco editor 主题）。 */
   theme?: ThemeMode;
+  /** 编辑器字号（来自设置面板，默认 13）。 */
+  fontSize?: number;
 }
 
 const MAX_TABLES_FETCH = 50;
@@ -119,6 +121,7 @@ export const SqlEditor = React.forwardRef<SqlEditorHandle, SqlEditorProps>(funct
   onOpenAiSettings,
   onSave,
   theme = 'dark',
+  fontSize = 13,
   }: SqlEditorProps,
   ref: React.Ref<SqlEditorHandle>,
 ) {
@@ -133,6 +136,7 @@ export const SqlEditor = React.forwardRef<SqlEditorHandle, SqlEditorProps>(funct
 
   // 连接切换 → 预取 schema 快照 → 重建补全 + tokenizer
   useEffect(() => {
+    let cancelled = false;
     if (!connectionId) {
       snapshotRef.current = null;
       providerRef.current?.update(null);
@@ -142,11 +146,13 @@ export const SqlEditor = React.forwardRef<SqlEditorHandle, SqlEditorProps>(funct
     setSchemaLoading(true);
     fetchSchemaSnapshot(connectionId)
       .then((snapshot) => {
+        if (cancelled) return;
         snapshotRef.current = snapshot;
         providerRef.current?.update(snapshot);
         applyTokenizer(monacoRef.current, snapshot);
       })
-      .finally(() => setSchemaLoading(false));
+      .finally(() => { if (!cancelled) setSchemaLoading(false); });
+    return () => { cancelled = true; };
   }, [connectionId]);
 
   // 初始化 AI 行内补全 provider（+ 设置变化时刷新）
@@ -158,6 +164,11 @@ export const SqlEditor = React.forwardRef<SqlEditorHandle, SqlEditorProps>(funct
   useEffect(() => {
     return () => onCleanupRef.current?.();
   }, []);
+
+  // 字号变化时同步到 Monaco 编辑器
+  useEffect(() => {
+    editorRef.current?.updateOptions({ fontSize });
+  }, [fontSize]);
 
   // AI 状态变化 → 重新注册 inline provider
   useEffect(() => {
@@ -357,6 +368,13 @@ const beforeMount: BeforeMount = useCallback((monaco) => {
     };
     // 聚焦
     editor.focus();
+    // 主动触发 AI 注册（onMount 时 Monaco 就绪，确保 AI provider 不丢失）
+    if (aiState.enabled) {
+      try {
+        const disposable = monaco.languages.registerInlineCompletionsProvider('sql', aiProviderRef.current!);
+        return () => { disposable.dispose(); };
+      } catch {}
+    }
   }, []);
 
   // 暴露 insertTextAtCursor 给父组件（体验优化：双击字段插入）
@@ -450,7 +468,7 @@ const beforeMount: BeforeMount = useCallback((monaco) => {
             if (val !== undefined) onSqlChange(val);
           }}
           options={{
-            fontSize: 13,
+            fontSize: fontSize,
             fontFamily: "'JetBrains Mono', Consolas, monospace",
             minimap: { enabled: false },
             scrollBeyondLastLine: false,

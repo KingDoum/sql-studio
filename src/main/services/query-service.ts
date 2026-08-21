@@ -68,16 +68,6 @@ export function splitStatements(sql: string): string[] {
       }
       continue;
     }
-    if (ch === '-' && next === '-') {
-      inLineComment = true;
-      i++;
-      continue;
-    }
-    if (ch === '/' && next === '*') {
-      inBlockComment = true;
-      i++;
-      continue;
-    }
     if (ch === "'" && !inDouble) {
       inSingle = !inSingle;
       buf += ch;
@@ -87,6 +77,23 @@ export function splitStatements(sql: string): string[] {
       inDouble = !inDouble;
       buf += ch;
       continue;
+    }
+    // 注释检测必须在引号之后：字符串内的 -- / # 不触发
+    if (!inSingle && !inDouble) {
+      if (ch === '-' && next === '-') {
+        inLineComment = true;
+        i++;
+        continue;
+      }
+      if (ch === '#') {
+        inLineComment = true;
+        continue;
+      }
+      if (ch === '/' && next === '*') {
+        inBlockComment = true;
+        i++;
+        continue;
+      }
     }
     if (ch === ';' && !inSingle && !inDouble) {
       const trimmed = buf.trim();

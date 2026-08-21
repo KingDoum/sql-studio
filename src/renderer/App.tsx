@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Database, History, Star, Settings } from 'lucide-react';
+import { Database, History, Star, Settings, X } from 'lucide-react';
 import { ConnectionManager } from '@renderer/components/ConnectionManager';
 import { ObjectExplorer } from '@renderer/components/ObjectExplorer';
 import { EditorTabs } from '@renderer/components/EditorTabs';
@@ -34,6 +34,8 @@ function App() {
   const [fontSize, setFontSize] = useState(12);
   const [fontFamily, setFontFamily] = useState('jetbrains');
   const [preview, setPreview] = useState<{ connectionId: string; database: string; table: string } | null>(null);
+  const [favoriteName, setFavoriteName] = useState<string | null>(null);
+  const [favoriteSql, setFavoriteSql] = useState('');
   const sqlEditorRef = useRef<SqlEditorHandle | null>(null);
   // 启动时读取主题/调试模式设置并应用
   useEffect(() => {
@@ -263,11 +265,17 @@ function App() {
   };
 
   const handleSaveAsFavorite = async (sql: string) => {
-    const name = window.prompt('收藏名称');
+    setFavoriteSql(sql);
+    setFavoriteName('');
+  };
+
+  const doSaveFavorite = async () => {
+    const name = favoriteName?.trim();
     if (!name) return;
     try {
-      await window.sqlStudio['favorites:save']({ name, sql, connectionId: currentConnectionId ?? undefined });
+      await window.sqlStudio['favorites:save']({ name, sql: favoriteSql, connectionId: currentConnectionId ?? undefined });
       window.alert(`已收藏：${name}`);
+      setFavoriteName(null);
     } catch (err) {
       window.alert(`收藏失败：${err instanceof Error ? err.message : String(err)}`);
     }
@@ -387,6 +395,7 @@ function App() {
               onSave={handleSave}
               aiSettingsVersion={aiSettingsVersion}
               theme={theme}
+              fontSize={fontSize}
             />
             <ResultTabs />
           </div>
@@ -411,6 +420,37 @@ function App() {
         onClose={() => setShowFavorites(false)}
         onOpen={(name) => void handleOpenFavorite(name)}
       />
+      {/* 收藏命名弹窗 */}
+      {favoriteName !== null && (
+        <div className="modal-overlay" onClick={() => setFavoriteName(null)}>
+          <div className="modal-panel" onClick={(e) => e.stopPropagation()} style={{ width: 400 }}>
+            <div className="modal-header">
+              <h3>收藏命名</h3>
+              <button className="modal-close" onClick={() => setFavoriteName(null)}><X size={16} /></button>
+            </div>
+            <div className="modal-body" style={{ padding: '12px 16px' }}>
+              <label className="ai-settings-field">
+                <span>收藏名称</span>
+                <input
+                  value={favoriteName}
+                  autoFocus
+                  placeholder="如 每日活跃用户统计"
+                  onChange={(e) => setFavoriteName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') void doSaveFavorite(); }}
+                />
+              </label>
+              <div className="ai-settings-actions">
+                <button className="ai-settings-btn primary" onClick={() => void doSaveFavorite()}>
+                  保存收藏
+                </button>
+                <button className="ai-settings-btn" onClick={() => setFavoriteName(null)}>
+                  取消
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <SettingsPanel
         open={showSettings}
         theme={theme}

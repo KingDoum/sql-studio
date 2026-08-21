@@ -61,7 +61,7 @@ export function createAiInlineProvider(
 
         const raw = await getSqlStudio()['ai:complete']({
           prefix,
-          maxTokens: 64,
+          maxTokens: 512,
         });
         const resp = raw as { suggestion: string };
 
@@ -80,7 +80,10 @@ export function createAiInlineProvider(
             },
           ],
         };
-      } catch {
+      } catch (err) {
+        if (typeof window !== 'undefined' && window.console) {
+          console.error('[AI] 行内补全请求失败:', err instanceof Error ? err.message : String(err));
+        }
         return { items: [] };
       }
     },

@@ -35,7 +35,10 @@ export class AiService {
     signal?: AbortSignal,
   ): Promise<AiCompletionResponse> {
     const baseUrl = config.baseUrl.replace(/\/+$/, '');
-    const url = `${baseUrl}/chat/completions`;
+    // 兼容 OpenAI 标准 API 路径（自动补全 /v1 前缀）
+    const url = baseUrl.endsWith('/v1')
+      ? `${baseUrl}/chat/completions`
+      : `${baseUrl}/v1/chat/completions`;
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -44,6 +47,7 @@ export class AiService {
       : controller.signal;
 
     try {
+      console.log('[AI] 请求:', url, 'model:', config.model, 'prefix:', req.prefix.slice(0, 100));
       const resp = await this.fetchFn(url, {
         method: 'POST',
         headers: {
@@ -56,7 +60,7 @@ export class AiService {
             { role: 'system', content: SYSTEM_PROMPT },
             { role: 'user', content: `Complete the SQL:\n${req.prefix}` },
           ],
-          max_tokens: req.maxTokens ?? 128,
+          max_tokens: req.maxTokens ?? 512,
           temperature: 0.2,
           stream: false,
         }),
@@ -67,6 +71,7 @@ export class AiService {
         throw normalizeError(resp.status, await resp.text().catch(() => ''));
       }
 
+      console.log('[AI] 响应状态:', resp.status);
       const data = (await resp.json()) as {
         choices?: Array<{ message?: { content?: string } }>;
       };

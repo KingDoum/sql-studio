@@ -168,7 +168,7 @@ export const SQL_STUDIO_THEME: SqlStudioThemeData = {
     'editorSuggestWidget.background': '#1E1F29',
     'editorSuggestWidget.selectedBackground': '#262738',
     'editorSuggestWidget.border': '#30314A',
-    'editorSuggestWidget.foreground': '#E6E8EF',
+    'editorSuggestWidget.foreground': '#D1D5DB',
   },
 };
 
@@ -204,6 +204,6 @@ export const SQL_STUDIO_THEME_LIGHT: SqlStudioThemeData = {
     'editorSuggestWidget.background': '#FFFFFF',
     'editorSuggestWidget.selectedBackground': '#E5E7EB',
     'editorSuggestWidget.border': '#D1D5DB',
-    'editorSuggestWidget.foreground': '#1E1F2E',
+    'editorSuggestWidget.foreground': '#111827',
   },
 };

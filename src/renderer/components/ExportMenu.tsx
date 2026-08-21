@@ -58,6 +58,8 @@ export function ExportMenu() {
       void window.sqlStudio['settings:set']({ key: LAST_EXPORT_DIR_KEY, value: dir });
     }
     window.alert(`导出成功：\n${filePath}`);
+    // 在文件管理器中定位文件（静默，不阻塞）
+    void window.sqlStudio['shell:showItemInFolder']({ path: filePath }).catch(() => {});
   };
 
   const exportExcel = async () => {

@@ -235,6 +235,7 @@ export function registerIpc(deps: IpcDeps, ipcMain: IpcMain): void {
   handle(IPC_CHANNELS['favorites:save'], (arg) => deps.favoritesStore.saveFavorite(arg));
   handle(IPC_CHANNELS['favorites:remove'], (arg) => ({ removed: deps.favoritesStore.removeFavorite(arg.name) }));
   handle(IPC_CHANNELS['favorites:open'], (arg) => deps.favoritesStore.readFavorite(arg.name));
+  handle(IPC_CHANNELS['favorites:rename'], (arg) => deps.favoritesStore.renameFavorite(arg.name, arg.newName));
 
   // ── AI 智能补全（V2 实装）──
   handle(IPC_CHANNELS['ai:complete'], async (arg) => {
@@ -284,5 +285,12 @@ export function registerIpc(deps: IpcDeps, ipcMain: IpcMain): void {
     });
     if (result.canceled || !result.filePaths?.length) return null;
     return result.filePaths[0]!;
+  });
+
+  // ── 系统 Shell：在文件管理器中显示文件（导出/另存为定位用）──
+  handle(IPC_CHANNELS['shell:showItemInFolder'], (arg) => {
+    const electron = require('electron') as typeof import('electron');
+    electron.shell.showItemInFolder(arg.path);
+    return { shown: true };
   });
 }

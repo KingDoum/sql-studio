@@ -107,3 +107,30 @@ describe('元信息缺省兜底', () => {
     expect(item.sql).toBe(sql);
   });
 });
+
+describe('重命名', () => {
+  it('renameFavorite 改文件名 + 注释块 name，保留 SQL', () => {
+    store.saveFavorite({ name: '旧名', sql: 'SELECT 1', connectionId: 'c1', tags: ['a'] });
+    const renamed = store.renameFavorite('旧名', '新名');
+    expect(renamed.name).toBe('新名');
+    expect(renamed.connectionId).toBe('c1');
+    expect(renamed.tags).toEqual(['a']);
+    expect(renamed.sql).toBe('SELECT 1');
+    // 旧文件删除、新文件存在
+    const list = store.listFavorites();
+    expect(list.some((f) => f.name === '新名')).toBe(true);
+    expect(list.some((f) => f.name === '旧名')).toBe(false);
+  });
+
+  it('renameFavorite 目标重名抛错且不破坏源文件', () => {
+    store.saveFavorite({ name: '甲', sql: 'SELECT 1' });
+    store.saveFavorite({ name: '乙', sql: 'SELECT 2' });
+    expect(() => store.renameFavorite('甲', '乙')).toThrow('已存在');
+    // 源文件仍在
+    expect(store.listFavorites().some((f) => f.name === '甲')).toBe(true);
+  });
+
+  it('renameFavorite 不存在抛错', () => {
+    expect(() => store.renameFavorite('不存在', '新名')).toThrow('不存在');
+  });
+});

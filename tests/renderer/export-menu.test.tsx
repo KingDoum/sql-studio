@@ -46,6 +46,7 @@ describe('ExportMenu', () => {
       'settings:get': vi.fn(async () => null),
       'settings:set': vi.fn(async () => ({ saved: true })),
       'dialog:showSaveDialog': vi.fn(async () => '/out/test.xlsx'),
+      'shell:showItemInFolder': vi.fn(async () => ({ shown: true })),
     };
   });
   afterEach(() => vi.restoreAllMocks());

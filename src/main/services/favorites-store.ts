@@ -195,4 +195,59 @@ export class FavoritesStore {
     }
     return { filePath, content: fs.readFileSync(filePath, 'utf-8') };
   }
+
+  /**
+   * 重命名收藏：把源文件名改为新名（保留元信息与正文）。
+   * - 新名转安全文件名；若目标已存在则抛错（避免覆盖）。
+   * - 更新文件顶部注释块的 name 字段。
+   * @returns 重命名后的 FavoriteItem
+   */
+  renameFavorite(name: string, newName: string): FavoriteItem {
+    const oldPath = this.resolveFavoritePath(name);
+    if (!oldPath) throw new Error(`收藏不存在: ${name}`);
+    const newFileName = toFileName(newName);
+    const newPath = path.join(this.dir, newFileName);
+    if (fs.existsSync(newPath)) {
+      throw new Error(`收藏名已存在: ${newName}`);
+    }
+    const content = fs.readFileSync(oldPath, 'utf-8');
+    const { meta, sql } = parseFile(content);
+    // 更新注释块 name（保留其它元信息）
+    const blocks: string[] = [];
+    blocks.push(`${HEADER_PREFIX}name: ${newName}`);
+    if (meta.connectionId) blocks.push(`${HEADER_PREFIX}connection: ${meta.connectionId}`);
+    if (meta.tags && meta.tags.length > 0) blocks.push(`${HEADER_PREFIX}tags: ${meta.tags.join(', ')}`);
+    if (meta.createdAt) blocks.push(`${HEADER_PREFIX}createdAt: ${meta.createdAt}`);
+    const newContent = `${blocks.join('\n')}\n\n${sql.replace(/\s*$/, '')}\n`;
+    fs.writeFileSync(newPath, newContent, 'utf-8');
+    fs.unlinkSync(oldPath);
+    const stat = fs.statSync(newPath);
+    return {
+      filePath: newPath,
+      name: newName,
+      sql,
+      connectionId: meta.connectionId,
+      tags: meta.tags,
+      createdAt: meta.createdAt ? Date.parse(meta.createdAt) || stat.mtimeMs : stat.mtimeMs,
+      updatedAt: stat.mtimeMs,
+    };
+  }
+
+  /** 按收藏名定位文件路径（兼容 meta.name 与文件名两种匹配）；找不到返回 null。 */
+  private resolveFavoritePath(name: string): string | null {
+    const exactPath = path.join(this.dir, toFileName(name));
+    if (fs.existsSync(exactPath)) return exactPath;
+    if (!fs.existsSync(this.dir)) return null;
+    const files = fs.readdirSync(this.dir).filter((f) => f.toLowerCase().endsWith('.sql'));
+    for (const f of files) {
+      const filePath = path.join(this.dir, f);
+      try {
+        const { meta } = parseFile(fs.readFileSync(filePath, 'utf-8'));
+        if (meta.name === name) return filePath;
+      } catch {
+        // 解析失败跳过
+      }
+    }
+    return null;
+  }
 }

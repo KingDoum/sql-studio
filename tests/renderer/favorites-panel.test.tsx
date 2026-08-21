@@ -18,6 +18,7 @@ describe('FavoritesPanel', () => {
       'favorites:list': vi.fn(async () => MOCK_FAVS),
       'favorites:remove': vi.fn(async () => ({ removed: true })),
       'favorites:open': vi.fn(async () => ({ filePath: '/queries/x.sql', content: 'SELECT 1' })),
+      'favorites:rename': vi.fn(async () => MOCK_FAVS[0]),
     };
   });
   afterEach(() => vi.restoreAllMocks());

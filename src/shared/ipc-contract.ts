@@ -70,6 +70,7 @@ export const IPC_CHANNELS = {
   'favorites:save': 'favorites:save',
   'favorites:remove': 'favorites:remove',
   'favorites:open': 'favorites:open',
+  'favorites:rename': 'favorites:rename',
 
   // AI 补全（V2 已实装）
   'ai:complete': 'ai:complete',
@@ -85,6 +86,7 @@ export const IPC_CHANNELS = {
   // 原生对话框
   'dialog:showSaveDialog': 'dialog:showSaveDialog',
   'dialog:showOpenDialog': 'dialog:showOpenDialog',
+  'shell:showItemInFolder': 'shell:showItemInFolder',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
@@ -126,6 +128,7 @@ export interface IpcRequestMap {
   'favorites:save': FavoriteSaveRequest;
   'favorites:remove': { name: string };
   'favorites:open': { name: string };
+  'favorites:rename': { name: string; newName: string };
 
   'ai:complete': AiCompletionRequest;
 
@@ -142,6 +145,9 @@ export interface IpcRequestMap {
 
   // 原生打开文件对话框
   'dialog:showOpenDialog': ShowOpenDialogOptions;
+
+  // 系统 Shell：在文件管理器中显示文件
+  'shell:showItemInFolder': { path: string };
 }
 
 export interface IpcResponseMap {
@@ -177,6 +183,7 @@ export interface IpcResponseMap {
   'favorites:save': FavoriteItem;
   'favorites:remove': { removed: boolean };
   'favorites:open': import('./types').ScriptFileResult;
+  'favorites:rename': import('./types').FavoriteItem;
 
   'ai:complete': AiCompletionResponse;
 
@@ -193,6 +200,9 @@ export interface IpcResponseMap {
 
   // 原生打开文件对话框：返回文件路径（取消返回 null）
   'dialog:showOpenDialog': string | null;
+
+  // 系统 Shell
+  'shell:showItemInFolder': { shown: boolean };
 }
 
 /** 便捷类型：某 channel 的请求参数类型。 */

@@ -55,15 +55,30 @@ export class CsvExporter {
       const stream = this.writeFile(req.options.filePath);
       stream.on('error', reject);
       stream.on('finish', () => resolve(rows.length));
-      // UTF-8 BOM（Excel 打开中文不乱码）
-      stream.write('\uFEFF');
-      // 表头
-      stream.write(columns.map((c) => escapeCsvField(c.name)).join(',') + '\n');
-      // 数据行（逐行流式写，小批次 backpressure 不处理，结果集已限量 5 万行）
-      for (const row of rows) {
-        stream.write(rowToCsvLine(row));
-      }
-      stream.end();
+
+      const header = '\uFEFF' + columns.map((c) => escapeCsvField(c.name)).join(',') + '\n';
+      let idx = 0;
+      let headerWritten = false;
+
+      // 事件驱动写入：write() 返回 false 时暂停，等待 drain 再续写（backpressure 处理）
+      const writeNext = () => {
+        let ok = true;
+        if (!headerWritten) {
+          ok = stream.write(header);
+          headerWritten = true;
+        }
+        while (ok && idx < rows.length) {
+          ok = stream.write(rowToCsvLine(rows[idx]));
+          idx += 1;
+        }
+        if (!ok) {
+          // 缓冲已满，等待 drain
+          stream.once('drain', writeNext);
+        } else {
+          stream.end();
+        }
+      };
+      writeNext();
     });
   }
 }

@@ -69,6 +69,7 @@ describe('IPC 契约', () => {
       'favorites:save',
       'favorites:remove',
       'favorites:open',
+      'favorites:rename',
       'ai:complete',
       'settings:getAiConfig',
       'settings:setAiConfig',
@@ -76,6 +77,7 @@ describe('IPC 契约', () => {
       'settings:set',
       'dialog:showSaveDialog',
       'dialog:showOpenDialog',
+      'shell:showItemInFolder',
     ];
     expect(channels.length).toBe(Object.values(IPC_CHANNELS).length);
   });

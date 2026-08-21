@@ -1531,6 +1531,88 @@ textarea {
   border-color: var(--danger);
 }
 
+/* ── 收藏操作按钮组 ── */
+.favorite-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.favorite-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background var(--transition-fast) ease, color var(--transition-fast) ease;
+}
+
+.favorite-act:hover {
+  background: var(--bg-hover);
+  color: var(--accent-bright);
+}
+
+.favorite-act.del:hover {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+
+/* ── 收藏重命名 ── */
+.rename-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+}
+
+.rename-input {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+}
+
+.rename-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background var(--transition-fast) ease, color var(--transition-fast) ease;
+}
+
+.rename-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.rename-btn.ok {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.rename-btn.ok:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
 /* ─────────────────────────────────────────────────────────────
  * V2 AI 设置面板
  * ───────────────────────────────────────────────────────────── */

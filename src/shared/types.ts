@@ -375,7 +375,7 @@ export interface CompletionProvider {
    * 给定上下文，返回补全候选。
    * @param context 当前 SQL 前缀、光标位置附近 token、已连接 schema 信息。
    */
-  provideCompletions(context: CompletionContext): CompletionItem[];
+  provideCompletions(context: CompletionContext): CompletionItem[] | Promise<CompletionItem[]>;
 }
 
 /** 补全上下文（供 schema 与 ai provider 共用）。 */

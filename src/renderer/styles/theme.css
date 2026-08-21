@@ -1810,3 +1810,191 @@ textarea {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* ═══════════════════════════════════════════════
+ * 浅色主题（白天主题切换）
+ * 覆盖 :root 中的深色变量
+ * ═══════════════════════════════════════════════ */
+[data-theme="light"] {
+  --bg: #f5f6fa;
+  --bg-panel: #ffffff;
+  --bg-elevated: #eef0f5;
+  --bg-raised: #ffffff;
+  --bg-hover: #e8eaf0;
+  --bg-active: #d4d7e2;
+  --statusbar-bg: #e2e4ec;
+  --input-bg: #ffffff;
+  --input-border: #c8cad4;
+  --border: #d4d7e2;
+  --border-subtle: rgba(212, 215, 226, 0.5);
+
+  --accent: #0d9488;
+  --accent-bright: #0ca5a4;
+  --accent-dim: #14b8a6;
+  --accent-alpha: rgba(13, 148, 136, 0.12);
+  --accent-alpha-hover: rgba(13, 148, 136, 0.2);
+
+  --text: #1e1f2e;
+  --text-dim: #555a6e;
+  --text-light: #3a3f55;
+  --text-muted: #9ba0b0;
+  --text-disabled: #c8cad4;
+  --text-white: #ffffff;
+  --text-link: #2563eb;
+
+  --success: #16a34a;
+  --success-alpha: rgba(22, 163, 74, 0.15);
+  --danger: #dc2626;
+  --danger-alpha: rgba(220, 38, 38, 0.15);
+  --warning: #d97706;
+  --warning-alpha: rgba(217, 119, 6, 0.15);
+  --info: #2563eb;
+  --info-alpha: rgba(37, 99, 235, 0.15);
+
+  --focus-ring: rgba(13, 148, 136, 0.35);
+  --selection-bg: rgba(13, 148, 136, 0.1);
+}
+
+/* ═══════════════════════════════════════════════
+ * 设置面板（SettingsPanel）
+ * ═══════════════════════════════════════════════ */
+.settings-panel {
+  max-width: 520px;
+}
+
+.settings-body {
+  padding: 8px 16px 16px;
+}
+
+.settings-section {
+  margin-bottom: 16px;
+}
+
+.settings-section h4 {
+  margin: 0 0 8px;
+  font-size: var(--fs-md);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.settings-theme-row {
+  display: flex;
+  gap: 8px;
+}
+
+.settings-theme-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: var(--fs-base);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.settings-theme-btn:hover {
+  border-color: var(--accent);
+  background: var(--accent-alpha);
+}
+
+.settings-theme-btn.active {
+  border-color: var(--accent);
+  background: var(--accent-alpha);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.settings-debug-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  cursor: pointer;
+  font-size: var(--fs-base);
+  color: var(--text);
+}
+
+.settings-debug-toggle input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
+.settings-debug-log {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.settings-debug-log-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-debug-log-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+}
+
+.settings-debug-copy {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+
+.settings-debug-copy:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.settings-debug-log-body {
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 300px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--text-dim);
+  background: var(--bg);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.settings-debug-hint {
+  margin: 6px 10px;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+/* ── 导出下拉提示 ── */
+.export-item-hint {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--warning-alpha);
+  color: var(--warning);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  vertical-align: middle;
+}

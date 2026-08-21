@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Database, History, Star } from 'lucide-react';
+import { Database, History, Star, Settings } from 'lucide-react';
 import { ConnectionManager } from '@renderer/components/ConnectionManager';
 import { ObjectExplorer } from '@renderer/components/ObjectExplorer';
 import { EditorTabs } from '@renderer/components/EditorTabs';
@@ -9,6 +9,9 @@ import { ExportMenu } from '@renderer/components/ExportMenu';
 import { HistoryPanel } from '@renderer/components/HistoryPanel';
 import { FavoritesPanel } from '@renderer/components/FavoritesPanel';
 import { AiSettingsPanel } from '@renderer/components/AiSettingsPanel';
+import { SettingsPanel } from '@renderer/components/SettingsPanel';
+import { ensureDebugLogging } from '@renderer/lib/debug-log';
+import type { ThemeMode } from '@shared/types';
 import { DataPreviewModal } from '@renderer/components/DataPreviewModal';
 import { useWorkspace, useActiveTab } from '@renderer/store/workspace';
 import { buildSelectSql, splitStatements } from '@renderer/lib/sql-utils';
@@ -25,8 +28,38 @@ function App() {
   const [showFavorites, setShowFavorites] = useState(false);
   const [showAiSettings, setShowAiSettings] = useState(false);
   const [aiSettingsVersion, setAiSettingsVersion] = useState(0);
+  const [showSettings, setShowSettings] = useState(false);
+  const [theme, setTheme] = useState<ThemeMode>('dark');
+  const [debugMode, setDebugMode] = useState(false);
   const [preview, setPreview] = useState<{ connectionId: string; database: string; table: string } | null>(null);
   const sqlEditorRef = useRef<SqlEditorHandle | null>(null);
+  // 启动时读取主题/调试模式设置并应用
+  useEffect(() => {
+    void window.sqlStudio['settings:get']({ key: 'theme' }).then((v) => {
+      if (v === 'light' || v === 'dark') applyTheme(v as ThemeMode);
+    });
+    void window.sqlStudio['settings:get']({ key: 'debugMode' }).then((v) => {
+      if (v === '1' || v === 'true') {
+        setDebugMode(true);
+        ensureDebugLogging(true);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const applyTheme = (t: ThemeMode) => {
+    setTheme(t);
+    document.documentElement.dataset.theme = t;
+    void window.sqlStudio['settings:set']({ key: 'theme', value: t });
+  };
+
+  const handleThemeChange = (t: ThemeMode) => applyTheme(t);
+
+  const handleDebugModeChange = (enabled: boolean) => {
+    setDebugMode(enabled);
+    ensureDebugLogging(enabled);
+    void window.sqlStudio['settings:set']({ key: 'debugMode', value: enabled ? '1' : '0' });
+  };
   const {
     tabs,
     activeTabId,
@@ -293,6 +326,9 @@ function App() {
           <button className="toolbar-btn" onClick={() => setShowFavorites(true)} title="命名收藏">
             <Star size={13} /> 收藏
           </button>
+          <button className="toolbar-btn" onClick={() => setShowSettings(true)} title="设置">
+            <Settings size={13} /> 设置
+          </button>
           {activeTab && <ExportMenu />}
         </div>
         {activeTab ? (
@@ -309,7 +345,9 @@ function App() {
               onExecute={(sql, db) => void handleExecute(sql, db)}
               onCancelQuery={handleCancelQuery}
               onOpenAiSettings={() => setShowAiSettings(true)}
+              onSave={handleSave}
               aiSettingsVersion={aiSettingsVersion}
+              theme={theme}
             />
             <ResultTabs />
           </div>
@@ -333,6 +371,14 @@ function App() {
         open={showFavorites}
         onClose={() => setShowFavorites(false)}
         onOpen={(name) => void handleOpenFavorite(name)}
+      />
+      <SettingsPanel
+        open={showSettings}
+        theme={theme}
+        debugMode={debugMode}
+        onThemeChange={handleThemeChange}
+        onDebugModeChange={handleDebugModeChange}
+        onClose={() => setShowSettings(false)}
       />
       <AiSettingsPanel
         open={showAiSettings}

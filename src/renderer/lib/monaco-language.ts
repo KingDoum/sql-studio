@@ -42,7 +42,7 @@ export interface SqlStudioThemeRule {
 
 /** 主题数据（形状兼容 monaco.editor.IStandaloneThemeData）。 */
 export interface SqlStudioThemeData {
-  base: 'vs-dark';
+  base: string;
   inherit: boolean;
   rules: SqlStudioThemeRule[];
   colors: Record<string, string>;
@@ -169,5 +169,41 @@ export const SQL_STUDIO_THEME: SqlStudioThemeData = {
     'editorSuggestWidget.selectedBackground': '#262738',
     'editorSuggestWidget.border': '#30314A',
     'editorSuggestWidget.foreground': '#E6E8EF',
+  },
+};
+
+/** 浅色主题（白天模式）。 */
+export const SQL_STUDIO_THEME_LIGHT: SqlStudioThemeData = {
+  base: 'vs',
+  inherit: true,
+  rules: [
+    { token: 'keyword', foreground: '6366F1', fontStyle: 'bold' },
+    { token: 'sql-table', foreground: '0D9488' },
+    { token: 'sql-column', foreground: '16A34A' },
+    { token: 'sql-db', foreground: 'D97706' },
+    { token: 'identifier', foreground: '1E1F2E' },
+    { token: 'string', foreground: '65A30D' },
+    { token: 'number', foreground: '2563EB' },
+    { token: 'comment', foreground: '9CA3AF', fontStyle: 'italic' },
+    { token: 'delimiter', foreground: '6B7280' },
+    { token: 'operator', foreground: '6B7280' },
+    { token: 'white', foreground: '1E1F2E' },
+  ],
+  colors: {
+    'editor.background': '#F5F6FA',
+    'editor.foreground': '#1E1F2E',
+    'editorLineNumber.foreground': '#C8CAD4',
+    'editorLineNumber.activeForeground': '#6B7280',
+    'editor.selectionBackground': '#BBDEFB',
+    'editor.inactiveSelectionBackground': '#E3F2FD',
+    'editorCursor.foreground': '#0D9488',
+    'editorIndentGuide.background': '#E5E7EB',
+    'editorIndentGuide.activeBackground': '#D1D5DB',
+    'editorLineHighlightBackground': '#F3F4F6',
+    'editorWidget.background': '#FFFFFF',
+    'editorSuggestWidget.background': '#FFFFFF',
+    'editorSuggestWidget.selectedBackground': '#E5E7EB',
+    'editorSuggestWidget.border': '#D1D5DB',
+    'editorSuggestWidget.foreground': '#1E1F2E',
   },
 };

@@ -7,9 +7,10 @@
  * 数据来源：连接成功后渲染进程经 schema:* IPC 预取 SchemaSnapshot（内存快照），
  * 连接切换 / schema 刷新时通过 update() 重建（架构：连接切换时重建）。
  *
- * 补全策略（纯函数可单测）：
+ * 补全策略：
  *  - 未连接/无快照 → 仅关键字。
- *  - 前缀以 `xxx.` 结尾 → xxx 是表名则给字段；是库名则给该库的表（V1 仅当前库有表数据）。
+ *  - 前缀以 `xxx.` 结尾 → xxx 是表名则给字段；是库名则给该库的表（支持跨库）。
+ *  - 前缀以 `库名.表名.` 结尾 → 给该表字段（支持跨库，通过异步 loader 拉取）。
  *  - 前文最近关键字为表上下文（FROM/JOIN/UPDATE/INTO…）→ 表 + 库 + 关键字。
  *  - 默认 → 关键字 + 表 + 库名（按 word 前缀过滤，按 score 排序）。
  */
@@ -32,6 +33,14 @@ export interface SchemaSnapshot {
   tables: TableMeta[];
   /** 表名 → 字段列表（当前库作用域；懒加载，取不到则为空）。 */
   columnsByTable: Record<string, ColumnMeta[]>;
+}
+
+/** 异步加载库表/字段数据的接口（跨库补全时使用）。 */
+export interface SchemaLoader {
+  /** 获取指定库的表列表。 */
+  tables(db: string): Promise<TableMeta[]>;
+  /** 获取指定库某表的字段列表。 */
+  columns(db: string, table: string): Promise<ColumnMeta[]>;
 }
 
 /** MySQL 常用关键字（补全 + Monarch 高亮共用）。 */
@@ -71,6 +80,15 @@ export function endWithQualifiedDot(prefix: string): string | null {
   return (m[1] ?? m[2]) as string;
 }
 
+/** 解析 `库名.表名.` 或 `表名.` 结尾，返回 {db?, table?} 或 null。 */
+export function parseQualifiedDot(prefix: string): { db?: string; table?: string } | null {
+  const m = /(?:`([^`]+)`|([\w$]+))\.(?:`([^`]+)`|([\w$]+))\.\s*$/.exec(prefix);
+  if (m) return { db: m[1] ?? m[2], table: m[3] ?? m[4] };
+  const m2 = /(?:`([^`]+)`|([\w$]+))\.\s*$/.exec(prefix);
+  if (m2) return { table: m2[1] ?? m2[2] };
+  return null;
+}
+
 /** 前缀最近一个词是否表上下文关键字。 */
 export function isTableContext(prefix: string): boolean {
   const words = prefix
@@ -88,8 +106,6 @@ export function isTableContext(prefix: string): boolean {
  */
 export function extractTableAliases(prefix: string): Record<string, string> {
   const aliases: Record<string, string> = {};
-  // 关键字 + 表名（反引号或普通标识符）+ 可选 AS + 别名（反引号或普通标识符）
-  // 表名和别名的反引号组优先匹配完整反引号段；别名后允许 空格/逗号/结尾
   const re = /(?:FROM|JOIN|INTO|UPDATE|TABLE)\s+(?:`([^`]+)`|([\w$]+))(?:\s+AS\s+|\s+)(?:`([^`]+)`|([\w$]+))(?=\s|,|$)/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(prefix)) !== null) {
@@ -100,8 +116,6 @@ export function extractTableAliases(prefix: string): Record<string, string> {
       aliases[alias.toLowerCase()] = table;
     }
   }
-  // 逗号分隔的隐式 JOIN：`FROM t1 a, t2 b` 中 t2 b 前面没有关键字
-  // 扫描所有 FROM/JOIN 关键字之后的逗号，避免误匹配 SELECT 列表中的逗号
   const fromStart = Math.max(
     prefix.lastIndexOf(' FROM '),
     prefix.lastIndexOf(' JOIN '),
@@ -111,7 +125,6 @@ export function extractTableAliases(prefix: string): Record<string, string> {
   );
   if (fromStart < 0) return aliases;
   const afterFrom = prefix.slice(fromStart);
-  // 只扫描 FROM/JOIN 段内的逗号（到第一个 WHERE/JOIN/ORDER/GROUP/HAVING/LIMIT 为止，除 JOIN 外）
   const clauseEnd = afterFrom.search(/\b(?:WHERE|ORDER\s+BY|GROUP\s+BY|HAVING|LIMIT)\b/i);
   const fromClause = clauseEnd > 0 ? afterFrom.slice(0, clauseEnd) : afterFrom;
   const commaRe = /,\s*(?:`([^`]+)`|([\w$]+))(?:\s+AS\s+|\s+)(?:`([^`]+)`|([\w$]+))(?=\s|,|$)/gi;
@@ -162,20 +175,28 @@ function sortItems(items: CompletionItem[]): CompletionItem[] {
 
 /**
  * V1 规则补全 provider。
- * 同步接口（CompletionProvider.provideCompletions 为同步），
- * schema 数据由外部预取后注入（update），符合可插拔设计。
+ * 支持异步跨库补全（通过注入的 SchemaLoader），
+ * 无 loader 时保持同步兼容。
  */
 export class SchemaCompletionProvider implements CompletionProvider {
   readonly kind = 'schema' as const;
 
-  constructor(private snapshot: SchemaSnapshot | null = null) {}
+  private dbTablesCache = new Map<string, TableMeta[]>();
+  private dbColumnsCache = new Map<string, ColumnMeta[]>();
+
+  constructor(
+    private snapshot: SchemaSnapshot | null = null,
+    private loader: SchemaLoader | null = null,
+  ) {}
 
   /** 连接切换 / schema 刷新时重建数据（架构铁律：重建而非增量）。 */
   update(snapshot: SchemaSnapshot | null): void {
     this.snapshot = snapshot;
+    this.dbTablesCache.clear();
+    this.dbColumnsCache.clear();
   }
 
-  provideCompletions(context: CompletionContext): CompletionItem[] {
+  provideCompletions(context: CompletionContext): CompletionItem[] | Promise<CompletionItem[]> {
     const base = getKeywordCompletionItems();
     if (!this.snapshot) return base;
 
@@ -184,24 +205,24 @@ export class SchemaCompletionProvider implements CompletionProvider {
 
     // 1) 字段/表上下文：`xxx.`
     if (isDotEnding(prefix)) {
-      const qualifier = endWithQualifiedDot(prefix);
+      const parsed = parseQualifiedDot(prefix);
+      if (!parsed) return base;
+
+      const { db, table: qualifier } = parsed;
+
+      if (db && qualifier) {
+        // 库名.表名. → 该表字段（支持跨库异步）
+        return this.getColumnsForTable(db, qualifier, base, word);
+      }
+
       if (qualifier) {
+        // 表名. → 该表字段（当前库优先）
         if (this.snapshot.tables.some((t) => t.name === qualifier)) {
-          // 表名. → 该表字段
           const cols = this.snapshot.columnsByTable[qualifier] ?? [];
           return sortItems(
             dedupe(
               filterByWord(
-                [
-                  ...base,
-                  ...cols.map((c) => ({
-                    label: c.name,
-                    category: 'column' as CompletionCategory,
-                    insertText: c.name,
-                    detail: c.type,
-                    score: 4,
-                  })),
-                ],
+                [...base, ...cols.map((c) => colItem(c))],
                 word,
               ),
             ),
@@ -215,37 +236,15 @@ export class SchemaCompletionProvider implements CompletionProvider {
           return sortItems(
             dedupe(
               filterByWord(
-                [
-                  ...base,
-                  ...cols.map((c) => ({
-                    label: c.name,
-                    category: 'column' as CompletionCategory,
-                    insertText: c.name,
-                    detail: c.type,
-                    score: 4,
-                  })),
-                ],
+                [...base, ...cols.map((c) => colItem(c))],
                 word,
               ),
             ),
           );
         }
+        // 库名. → 该库表（支持跨库异步）
         if (this.snapshot.databases.includes(qualifier)) {
-          // 库名. → 该库表（V1 仅当前库有表数据；非当前库退化为库名列表）
-          const tables =
-            qualifier === this.snapshot.database ? this.snapshot.tables : [];
-          return sortItems(
-            dedupe(
-              filterByWord(
-                [
-                  ...base,
-                  ...tables.map((t) => tableItem(t)),
-                  ...this.snapshot.databases.map((d) => dbItem(d)),
-                ],
-                word,
-              ),
-            ),
-          );
+          return this.getTablesForDatabase(qualifier, base, word);
         }
       }
     }
@@ -280,6 +279,100 @@ export class SchemaCompletionProvider implements CompletionProvider {
       ),
     );
   }
+
+  /** 获取指定库的表列表（支持跨库异步）。 */
+  private async getTablesForDatabase(
+    db: string,
+    base: CompletionItem[],
+    word: string,
+  ): Promise<CompletionItem[]> {
+    const snapshot = this.snapshot;
+    if (!snapshot) return base;
+
+    let tables: TableMeta[];
+    if (db === snapshot.database) {
+      tables = snapshot.tables;
+    } else if (this.loader) {
+      const cached = this.dbTablesCache.get(db);
+      if (cached) {
+        tables = cached;
+      } else {
+        try {
+          tables = await this.loader.tables(db);
+          this.dbTablesCache.set(db, tables);
+        } catch {
+          tables = [];
+        }
+      }
+    } else {
+      tables = [];
+    }
+    return sortItems(
+      dedupe(
+        filterByWord(
+          [
+            ...base,
+            ...tables.map((t) => tableItem(t)),
+            ...snapshot.databases.map((d) => dbItem(d)),
+          ],
+          word,
+        ),
+      ),
+    );
+  }
+
+  /** 获取指定库某表的字段列表（支持跨库异步）。 */
+  private async getColumnsForTable(
+    db: string,
+    table: string,
+    base: CompletionItem[],
+    word: string,
+  ): Promise<CompletionItem[]> {
+    const snapshot = this.snapshot;
+    if (!snapshot) return base;
+
+    let cols: ColumnMeta[];
+    if (db === snapshot.database) {
+      cols = snapshot.columnsByTable[table] ?? [];
+      if (cols.length === 0 && this.loader) {
+        const cacheKey = `${db}.${table}`;
+        const cached = this.dbColumnsCache.get(cacheKey);
+        if (cached) {
+          cols = cached;
+        } else {
+          try {
+            cols = await this.loader.columns(db, table);
+            this.dbColumnsCache.set(cacheKey, cols);
+          } catch {
+            cols = [];
+          }
+        }
+      }
+    } else if (this.loader) {
+      const cacheKey = `${db}.${table}`;
+      const cached = this.dbColumnsCache.get(cacheKey);
+      if (cached) {
+        cols = cached;
+      } else {
+        try {
+          cols = await this.loader.columns(db, table);
+          this.dbColumnsCache.set(cacheKey, cols);
+        } catch {
+          cols = [];
+        }
+      }
+    } else {
+      cols = [];
+    }
+    return sortItems(
+      dedupe(
+        filterByWord(
+          [...base, ...cols.map((c) => colItem(c))],
+          word,
+        ),
+      ),
+    );
+  }
 }
 
 function tableItem(t: TableMeta): CompletionItem {
@@ -294,4 +387,14 @@ function tableItem(t: TableMeta): CompletionItem {
 
 function dbItem(d: string): CompletionItem {
   return { label: d, category: 'database' as CompletionCategory, insertText: d, score: 2 };
+}
+
+function colItem(c: ColumnMeta): CompletionItem {
+  return {
+    label: c.name,
+    category: 'column' as CompletionCategory,
+    insertText: c.name,
+    detail: c.type,
+    score: 4,
+  };
 }

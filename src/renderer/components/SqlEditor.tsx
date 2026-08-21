@@ -16,13 +16,13 @@ import React, { useCallback, useEffect, useImperativeHandle, useMemo, useRef, us
 import Editor, { type BeforeMount, type OnMount } from '@monaco-editor/react';
 import { format } from 'sql-formatter';
 import { Brain } from 'lucide-react';
-import type { ColumnMeta, EditorTab, TableMeta } from '@shared/types';
+import type { ColumnMeta, EditorTab, TableMeta, ThemeMode } from '@shared/types';
 import { getCurrentStatement, splitStatements } from '@renderer/lib/sql-utils';
 import {
   SchemaCompletionProvider,
   type SchemaSnapshot,
 } from '@renderer/lib/sql-completion';
-import { buildSqlMonarchLanguage, SQL_STUDIO_THEME } from '@renderer/lib/monaco-language';
+import { buildSqlMonarchLanguage, SQL_STUDIO_THEME, SQL_STUDIO_THEME_LIGHT } from '@renderer/lib/monaco-language';
 import {
   createAiInlineProvider,
   fetchAiConfig,
@@ -44,6 +44,10 @@ export interface SqlEditorProps {
   onExecute(sql: string, database?: string): void;
   onCancelQuery?(): void;
   onOpenAiSettings?(): void;
+  /** Ctrl+S 保存回调（App 传入 handleSave）。 */
+  onSave?(): void;
+  /** 当前主题（白天/深色，控制 Monaco editor 主题）。 */
+  theme?: ThemeMode;
 }
 
 const MAX_TABLES_FETCH = 50;
@@ -113,6 +117,8 @@ export const SqlEditor = React.forwardRef<SqlEditorHandle, SqlEditorProps>(funct
   onExecute,
   onCancelQuery,
   onOpenAiSettings,
+  onSave,
+  theme = 'dark',
   }: SqlEditorProps,
   ref: React.Ref<SqlEditorHandle>,
 ) {
@@ -163,6 +169,10 @@ export const SqlEditor = React.forwardRef<SqlEditorHandle, SqlEditorProps>(funct
     aiProviderRef.current = provider as unknown as ReturnType<typeof createAiInlineProvider>;
     // 注册 inline completions provider
     const disposable = monaco.languages.registerInlineCompletionsProvider('sql', provider);
+    // 同步 inlineSuggest 设置（AI 开启时启用行内建议，关闭时禁用）
+    try {
+      editorRef.current?.updateOptions({ inlineSuggest: { enabled: aiState.enabled } });
+    } catch { /* 静默，不影响核心功能 */ }
     return () => {
       disposable.dispose();
       provider.dispose();
@@ -231,18 +241,41 @@ export const SqlEditor = React.forwardRef<SqlEditorHandle, SqlEditorProps>(funct
   executeRef.current = handleExecute;
   const formatRef = useRef(handleFormat);
   formatRef.current = handleFormat;
+  const saveRef = useRef(onSave);
+  saveRef.current = onSave;
 
 const beforeMount: BeforeMount = useCallback((monaco) => {
     // 注册主题
     monaco.editor.defineTheme('sql-studio-dark', SQL_STUDIO_THEME);
+    monaco.editor.defineTheme('sql-studio-light', SQL_STUDIO_THEME_LIGHT);
 
     // 补全 provider：全局只注册一次
     if (!completionProviderRegistered) {
       completionProviderRegistered = true;
-      providerRef.current = new SchemaCompletionProvider(null);
+      // 跨库补全 loader：非当前库的表/字段经主进程 SchemaCache 异步拉取（带 provider 内缓存）
+      providerRef.current = new SchemaCompletionProvider(null, {
+        tables: async (db: string) => {
+          const connId = snapshotRef.current?.connectionId;
+          if (!connId) return [];
+          try {
+            return await window.sqlStudio['schema:tables']({ connectionId: connId, database: db });
+          } catch {
+            return [];
+          }
+        },
+        columns: async (db: string, table: string) => {
+          const connId = snapshotRef.current?.connectionId;
+          if (!connId) return [];
+          try {
+            return await window.sqlStudio['schema:columns']({ connectionId: connId, database: db, table });
+          } catch {
+            return [];
+          }
+        },
+      });
       globalCompletionDisposable = monaco.languages.registerCompletionItemProvider('sql', {
         triggerCharacters: ['.', '`'],
-        provideCompletionItems: (
+        provideCompletionItems: async (
           model: {
             getWordUntilPosition(pos: unknown): { word: string; startColumn: number; endColumn: number };
             getValueInRange(range: unknown): string;
@@ -258,7 +291,7 @@ const beforeMount: BeforeMount = useCallback((monaco) => {
             endLineNumber: position.lineNumber,
             endColumn: position.column,
           });
-          const items = provider.provideCompletions({
+          const items = await provider.provideCompletions({
             prefix,
             word: word.word,
             connectionId: snapshotRef.current?.connectionId,
@@ -286,7 +319,7 @@ const beforeMount: BeforeMount = useCallback((monaco) => {
   const onMount: OnMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
-    editor.updateOptions({ theme: 'sql-studio-dark' });
+    editor.updateOptions({ theme: theme === 'light' ? 'sql-studio-light' : 'sql-studio-dark' });
     // 初装 tokenizer（空 schema）
     applyTokenizer(monaco, null);
     // 注册快捷键（onMount 时 editor/monaco 已就绪，避免 useEffect 依赖 ref 空跑）
@@ -302,10 +335,17 @@ const beforeMount: BeforeMount = useCallback((monaco) => {
       keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF],
       run: () => formatRef.current(),
     });
+    const action3 = editor.addAction({
+      id: 'sql-studio.save',
+      label: '保存',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS],
+      run: () => saveRef.current?.(),
+    });
     // 清理：组件卸载时 dispose 快捷键
     onCleanupRef.current = () => {
       action1.dispose();
       action2.dispose();
+      action3.dispose();
       // dispose 全局补全 provider 并重置守卫（组件卸载后可安全重挂载）
       if (globalCompletionDisposable) {
         globalCompletionDisposable.dispose();
@@ -400,7 +440,7 @@ const beforeMount: BeforeMount = useCallback((monaco) => {
         <Editor
           path={tab.id}
           language="sql"
-          theme="sql-studio-dark"
+          theme={theme === 'light' ? 'sql-studio-light' : 'sql-studio-dark'}
           defaultValue={tab.sql}
           beforeMount={beforeMount}
           onMount={onMount}
@@ -420,6 +460,7 @@ const beforeMount: BeforeMount = useCallback((monaco) => {
             padding: { top: 8 },
             suggestOnTriggerCharacters: true,
             quickSuggestions: true,
+
             bracketPairColorization: { enabled: true },
           }}
           loading={<div className="editor-loading">编辑器加载中…</div>}

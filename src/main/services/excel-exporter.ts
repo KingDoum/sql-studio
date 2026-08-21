@@ -71,13 +71,21 @@ export class ExcelExporter {
       if (options.freezeHeader !== false) ws.views = [{ state: 'frozen', ySplit: 1 }];
     }
 
-    // 数据行
-    for (const row of rows) {
-      const obj: Record<string, ExcelJS.CellValue> = {};
-      columns.forEach((c, i) => {
-        obj[c.name] = toExcelValue(row[i]);
-      });
-      ws.addRow(obj);
+    // 数据行（分批写入：每批让出事件循环，避免大结果集阻塞主进程 UI）
+    const BATCH = 2000;
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const batch = rows.slice(i, i + BATCH);
+      for (const row of batch) {
+        const obj: Record<string, ExcelJS.CellValue> = {};
+        columns.forEach((c, colIdx) => {
+          obj[c.name] = toExcelValue(row[colIdx]);
+        });
+        ws.addRow(obj);
+      }
+      if (i + BATCH < rows.length) {
+        // 让主进程事件循环有机会处理其他消息（窗口不冻结）
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
     }
     metaRows = rows.length;
 

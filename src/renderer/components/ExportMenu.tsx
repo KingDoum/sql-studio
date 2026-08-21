@@ -147,9 +147,9 @@ export function ExportMenu() {
         title="导出结果"
       >
         <Download size={13} />
-        <span>导出</span>
+        <span>{exporting ? '导出中…' : '导出'}</span>
       </button>
-      {open && (
+      {open && resultSet && (
         <>
           <div className="export-backdrop" onClick={close} />
           <div className="export-dropdown">
@@ -157,8 +157,14 @@ export function ExportMenu() {
               className="export-item"
               disabled={exporting}
               onClick={() => void exportExcel()}
+              title={resultSet.rows.length > 10000 ? '数据量较大（' + resultSet.rows.length.toLocaleString() + ' 行），导出可能需要一些时间，请勿重复点击' : undefined}
             >
               导出 Excel（全量）
+              {resultSet.rows.length > 10000 && (
+                <span className="export-item-hint">
+                  {resultSet.rows.length.toLocaleString()} 行
+                </span>
+              )}
             </button>
             <button
               className="export-item"

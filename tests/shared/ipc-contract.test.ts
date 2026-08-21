@@ -129,7 +129,7 @@ describe('类型映射一致性（编译期为主）', () => {
 });
 
 describe('AI 补全接口预留（V2 契约）', () => {
-  it('CompletionProvider 可插拔接口形态正确', () => {
+  it('CompletionProvider 可插拔接口形态正确', async () => {
     // 模拟 V1 规则补全 provider 形态（编译期校验结构）
     const schemaProvider: CompletionProvider = {
       kind: 'schema',
@@ -140,7 +140,7 @@ describe('AI 补全接口预留（V2 契约）', () => {
         ];
       },
     };
-    const items = schemaProvider.provideCompletions({ prefix: 'SELECT ', word: 'us' });
+    const items = await schemaProvider.provideCompletions({ prefix: 'SELECT ', word: 'us' });
     expect(schemaProvider.kind).toBe('schema');
     expect(items[0]?.category).toBe('table');
   });

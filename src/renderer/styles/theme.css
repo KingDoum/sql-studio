@@ -2189,3 +2189,198 @@ input:focus, textarea:focus, select:focus {
   padding: 2px 8px;
   font-size: var(--fs-xs);
 }
+
+/* ═══════════════════════════════════════════════
+ * 组件精细打磨（VSCode 设计理念：状态颜色层次分明）
+ * ═══════════════════════════════════════════════ */
+
+/* —— 侧边栏面板头部半透明（透出磨砂背景） —— */
+.sidebar-header {
+  background: rgba(30, 31, 41, 0.5);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.panel-connections .conn-header {
+  background: rgba(30, 31, 41, 0.3);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+/* —— 连接列表选中态深度打磨 —— */
+.conn-list li.selected {
+  background: linear-gradient(90deg, rgba(0, 179, 164, 0.12) 0%, rgba(0, 179, 164, 0.04) 100%);
+  border-left-color: var(--accent-bright);
+  border-left-width: 3px;
+}
+
+.conn-list li:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+/* —— 对象树节点精细交互 —— */
+.db-item:hover,
+.table-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.db-item.expanded,
+.table-item.expanded {
+  background: rgba(0, 179, 164, 0.06);
+  border-left: 2px solid var(--accent-dim);
+}
+
+.db-item:active,
+.table-item:active {
+  transform: translateX(1px);
+  transition: transform 0.08s;
+}
+
+/* —— 下拉菜单精细样式 —— */
+.export-dropdown {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  min-width: 160px;
+}
+
+.export-item {
+  padding: 7px 14px;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: transparent;
+  border: none;
+  text-align: left;
+  width: 100%;
+  cursor: pointer;
+  transition: background var(--transition-fast) ease, color var(--transition-fast) ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-left: 2px solid transparent;
+}
+
+.export-item:hover {
+  background: rgba(0, 179, 164, 0.1);
+  color: var(--accent-bright);
+  border-left-color: var(--accent);
+}
+
+.export-item:active {
+  background: rgba(0, 179, 164, 0.18);
+}
+
+.export-item + .export-item {
+  border-top: 1px solid var(--glass-border);
+}
+
+/* —— 结果表格行精细交互 —— */
+.result-grid tbody tr {
+  transition: background var(--transition-fast) ease;
+}
+
+.result-grid tbody tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.result-grid tbody tr.selected {
+  background: rgba(0, 179, 164, 0.08);
+}
+
+.result-grid tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.result-grid tbody tr:nth-child(even):hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* —— 标签页底部发光条动画 —— */
+.tab.active {
+  position: relative;
+}
+
+.tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 8px;
+  right: 8px;
+  height: 2px;
+  background: var(--accent-gradient);
+  border-radius: 1px;
+  box-shadow: 0 0 8px rgba(0, 179, 164, 0.4);
+  animation: tabGlow 2s ease-in-out infinite alternate;
+}
+
+@keyframes tabGlow {
+  0% { opacity: 0.6; box-shadow: 0 0 6px rgba(0, 179, 164, 0.3); }
+  100% { opacity: 1; box-shadow: 0 0 12px rgba(0, 179, 164, 0.5); }
+}
+
+/* —— 按钮统一精致感 —— */
+.sql-editor-btn, .toolbar-btn {
+  transition: all var(--transition-fast) ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.sql-editor-btn::after, .toolbar-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.sql-editor-btn:active, .toolbar-btn:active {
+  transform: scale(0.96);
+}
+
+/* —— 滚动条精细打磨 —— */
+*::-webkit-scrollbar-track {
+  background: transparent;
+  border: none;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(121, 121, 121, 0.2);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+  min-height: 32px;
+  transition: background var(--transition-fast) ease, width var(--transition-normal) ease;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(121, 121, 121, 0.4);
+  width: 10px;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+  transition: width var(--transition-normal) ease;
+}
+
+*:hover::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+/* —— 弹窗面板头部更精致 —— */
+.modal-header {
+  background: rgba(0, 0, 0, 0.15);
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.modal-header h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.3px;
+}

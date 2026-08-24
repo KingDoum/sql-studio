@@ -256,14 +256,16 @@ export class ConnectionManager {
       const res = await (conn as unknown as { query(sql: string): Promise<unknown> }).query(sql);
       // mysql2 多语句：res 为数组（每个 [rows, fields]）；单语句：res 为 [rows, fields]
       const sets: [QueryRow[], unknown][] = Array.isArray(res)
-        ? (res as unknown[]).map((item) => {
-            // 逐元素判断：SELECT 返回 [rows, fields]，INSERT/UPDATE 返回 ResultSetHeader（非数组）
-            if (Array.isArray(item) && item.length >= 2 && Array.isArray(item[0])) {
-              return item as [QueryRow[], unknown];
-            }
-            // ResultSetHeader：rows 为空数组，fields 为 item 本身
-            return [[] as QueryRow[], item];
-          })
+        ? // 多语句时 res 形如 [[rows,fields],[rows,fields],...]；单语句为 [rows, fields]
+          isResultSetArray(res)
+          ? (res as unknown[]).map((item) => {
+              // 逐元素：SELECT 返回 [rows, fields]，INSERT/UPDATE 返回 ResultSetHeader（非数组）
+              if (Array.isArray(item) && item.length >= 2 && Array.isArray(item[0])) {
+                return item as [QueryRow[], unknown];
+              }
+              return [[] as QueryRow[], item];
+            })
+          : [res as [QueryRow[], unknown]]
         : [[[] as QueryRow[], res]];
       return sets.map(([rows, fields]) => normalizeRawSet(rows, fields));
     } finally {

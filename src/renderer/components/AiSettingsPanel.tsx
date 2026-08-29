@@ -1,11 +1,13 @@
 /**
- * AiSettingsPanel（V2：AI 补全设置弹窗）。
+ * AiSettingsPanel（V2：AI 补全设置弹窗，UI 重设计 S4 统一弹窗）。
  * 配置 BaseURL / Model / API Key / 启用开关。
  * 数据通过 settings:getAiConfig / settings:setAiConfig IPC 与主进程同步。
+ * 主操作「保存设置」放在统一底部操作区（Modal footer）。
  */
 import { useEffect, useState } from 'react';
-import { X, Brain } from 'lucide-react';
+import { Brain } from 'lucide-react';
 import type { AiConfig } from '@shared/types';
+import { Modal } from './Modal';
 
 export interface AiSettingsPanelProps {
   open: boolean;
@@ -58,63 +60,58 @@ export function AiSettingsPanel({ open, onClose, onSettingsChanged }: AiSettings
     }
   };
 
-  if (!open) return null;
-
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-panel" onClick={(e) => e.stopPropagation()} style={{ width: 460 }}>
-        <div className="modal-header">
-          <h3><Brain size={16} style={{ marginRight: 6 }} /> AI 智能补全设置</h3>
-          <button className="modal-close" onClick={onClose}><X size={16} /></button>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={<><Brain size={16} /> AI 智能补全设置</>}
+      width={460}
+      footer={
+        <button className="ai-settings-btn primary" onClick={() => void handleSave()} disabled={saving}>
+          {saving ? '保存中…' : '保存设置'}
+        </button>
+      }
+    >
+      {loading ? (
+        <div className="modal-loading">加载中…</div>
+      ) : (
+        <div className="ai-settings-form">
+          <label className="ai-settings-label">
+            <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+            启用 AI 行内补全（灰色预测）
+          </label>
+          <label className="ai-settings-field">
+            <span>API Base URL</span>
+            <input
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+              placeholder="https://api.deepseek.com"
+            />
+          </label>
+          <label className="ai-settings-field">
+            <span>模型</span>
+            <input
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              placeholder="deepseek-chat"
+            />
+          </label>
+          <label className="ai-settings-field">
+            <span>API Key</span>
+            <input
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="sk-..."
+            />
+          </label>
+          {msg && <p className={msg.includes('失败') ? 'form-error' : 'test-msg'}>{msg}</p>}
+          <p className="ai-settings-hint">
+            支持 OpenAI 兼容 API（DeepSeek、混元、通义千问等）。
+            输入 SQL 前缀后自动请求 AI 补全建议，以灰色行内文字展示。
+          </p>
         </div>
-        <div className="modal-body" style={{ padding: '12px 16px' }}>
-          {loading ? (
-            <div className="modal-loading">加载中…</div>
-          ) : (
-            <div className="ai-settings-form">
-              <label className="ai-settings-label">
-                <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-                启用 AI 行内补全（灰色预测）
-              </label>
-              <label className="ai-settings-field">
-                <span>API Base URL</span>
-                <input
-                  value={baseUrl}
-                  onChange={(e) => setBaseUrl(e.target.value)}
-                  placeholder="https://api.deepseek.com"
-                />
-              </label>
-              <label className="ai-settings-field">
-                <span>模型</span>
-                <input
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  placeholder="deepseek-chat"
-                />
-              </label>
-              <label className="ai-settings-field">
-                <span>API Key</span>
-                <input
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="sk-..."
-                />
-              </label>
-              <div className="ai-settings-actions">
-                <button className="ai-settings-btn primary" onClick={() => void handleSave()} disabled={saving}>
-                  {saving ? '保存中…' : '保存设置'}
-                </button>
-              </div>
-              {msg && <p className={msg.includes('失败') ? 'form-error' : 'test-msg'}>{msg}</p>}
-              <p className="ai-settings-hint">
-                支持 OpenAI 兼容 API（DeepSeek、混元、通义千问等）。
-                输入 SQL 前缀后自动请求 AI 补全建议，以灰色行内文字展示。
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+      )}
+    </Modal>
   );
 }

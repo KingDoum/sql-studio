@@ -3,7 +3,7 @@
  * ResultTabs 组件测试（任务 10）。
  * 覆盖：无执行、错误、多结果集、状态栏。
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ResultTabs } from '@renderer/components/ResultTabs';
 import { useWorkspace } from '@renderer/store/workspace';
@@ -17,6 +17,17 @@ describe('ResultTabs', () => {
       writable: true,
       configurable: true,
     });
+    // ResultTabs 内嵌 ExportMenu，需要 sqlStudio 环境
+    (window as unknown as { sqlStudio?: unknown }).sqlStudio = {
+      'settings:get': vi.fn(async () => null),
+      'settings:set': vi.fn(async () => ({ saved: true })),
+      'dialog:showSaveDialog': vi.fn(async () => '/out/test.xlsx'),
+      'export:excel': vi.fn(async () => ({ filePath: '/out/test.xlsx', rowCount: 1 })),
+      'export:csv': vi.fn(async () => ({ filePath: '/out/test.csv', rowCount: 1 })),
+      'export:insert': vi.fn(async () => ({ filePath: '/out/test.sql', rowCount: 1 })),
+      'shell:showItemInFolder': vi.fn(async () => ({ shown: true })),
+    };
+    vi.spyOn(window, 'alert').mockImplementation(() => {});
   });
 
   it('无执行时显示空提示', () => {

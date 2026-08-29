@@ -21,6 +21,8 @@ import { compareCell, formatCell, matchesFilter } from '@renderer/lib/cell-forma
 export interface ResultGridProps {
   columns: ColumnMeta[];
   rows: CellValue[][];
+  /** 是否显示筛选行（结果工具栏筛选入口控制，默认显示）。 */
+  showFilter?: boolean;
 }
 
 type SortDir = 'asc' | 'desc' | 'none';
@@ -31,7 +33,7 @@ const DEFAULT_COL_W = 150;
 const MIN_COL_W = 60;
 const MAX_COL_W = 600;
 
-export function ResultGrid({ columns, rows }: ResultGridProps) {
+export function ResultGrid({ columns, rows, showFilter = true }: ResultGridProps) {
   const [sortCol, setSortCol] = useState<number | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>('none');
   const [filters, setFilters] = useState<Record<number, string>>({});
@@ -178,18 +180,20 @@ export function ResultGrid({ columns, rows }: ResultGridProps) {
           </div>
         ))}
       </div>
-      {/* 筛选行（固定，同一 gridTemplateColumns） */}
-      <div className="grid-filter" style={{ gridTemplateColumns: gridTemplate, minWidth }}>
-        {columns.map((c, ci) => (
-          <input
-            key={`f-${c.name}`}
-            className="grid-filter-input"
-            placeholder="筛选…"
-            value={filters[ci] ?? ''}
-            onChange={(e) => setFilters((f) => ({ ...f, [ci]: e.target.value }))}
-          />
-        ))}
-      </div>
+      {/* 筛选行（固定，同一 gridTemplateColumns；由结果工具栏开关控制） */}
+      {showFilter && (
+        <div className="grid-filter" style={{ gridTemplateColumns: gridTemplate, minWidth }}>
+          {columns.map((c, ci) => (
+            <input
+              key={`f-${c.name}`}
+              className="grid-filter-input"
+              placeholder="筛选…"
+              value={filters[ci] ?? ''}
+              onChange={(e) => setFilters((f) => ({ ...f, [ci]: e.target.value }))}
+            />
+          ))}
+        </div>
+      )}
       {/* 数据体（虚拟滚动，同列宽） */}
       <div className="grid-body" ref={handleBodyRef} onScroll={handleBodyScroll} style={{ minWidth }}>
         <div className="grid-spacer" style={{ height: visibleRows.length * ROW_HEIGHT, minWidth }}>

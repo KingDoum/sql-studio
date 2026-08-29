@@ -39,7 +39,7 @@ describe('ConnectionManager', () => {
   it('新建连接表单可保存并刷新', async () => {
     const store = mockSqlStudio();
     render(<ConnectionManager onSelect={() => {}} />);
-    fireEvent.click(await screen.findByText('新建连接'));
+    fireEvent.click(await screen.findByText('新建'));
     fireEvent.change(screen.getByLabelText('名称'), { target: { value: '我的库' } });
     fireEvent.change(screen.getByLabelText('主机'), { target: { value: '127.0.0.1' } });
     fireEvent.change(screen.getByLabelText('用户'), { target: { value: 'root' } });
@@ -57,10 +57,11 @@ describe('ConnectionManager', () => {
     expect(onSelect).toHaveBeenCalledWith('c1');
   });
 
-  it('删除连接', async () => {
+  it('删除连接（更多菜单 → 删除）', async () => {
     const store = mockSqlStudio();
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     render(<ConnectionManager onSelect={() => {}} />);
+    fireEvent.click(await screen.findByText('本地').then((el) => el.closest('li')!.querySelector('.conn-more-btn')!));
     fireEvent.click(await screen.findByText('删除'));
     await waitFor(() => expect(store['connections:remove']).toHaveBeenCalledWith({ id: 'c1' }));
   });

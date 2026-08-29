@@ -541,10 +541,7 @@ input:focus, select:focus, textarea:focus {
 }
 
 .conn-list li {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  position: relative;
   cursor: pointer;
   border-left: 3px solid transparent;
   transition: background var(--transition-fast) ease, border-color var(--transition-fast) ease;
@@ -564,6 +561,109 @@ input:focus, select:focus, textarea:focus {
   outline-offset: -2px;
 }
 
+/* 连接项两行布局（S3） */
+.conn-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  min-width: 0;
+}
+
+.conn-row-icon {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.conn-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.conn-row-line1 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.conn-row-line2 {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-left: 14px;
+}
+
+.conn-more-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--transition-fast) ease, color var(--transition-fast) ease;
+}
+
+.conn-more-btn:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+/* 更多菜单 */
+.conn-menu {
+  position: absolute;
+  right: 8px;
+  top: calc(100% - 2px);
+  min-width: 132px;
+  padding: 4px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-menu);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.conn-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast) ease, color var(--transition-fast) ease;
+}
+
+.conn-menu-item:hover {
+  background: var(--color-surface-hover);
+}
+
+.conn-menu-item.danger {
+  color: var(--color-danger);
+}
+
+.conn-menu-item.danger:hover {
+  background: var(--color-danger-soft);
+}
+
 .conn-name {
   flex: 1;
   font-size: 13px;
@@ -572,15 +672,6 @@ input:focus, select:focus, textarea:focus {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.conn-meta {
-  font-size: 11px;
-  color: var(--color-text-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 140px;
 }
 
 /* 连接状态（图标+文字由组件提供，颜色仅辅助） */
@@ -597,25 +688,6 @@ input:focus, select:focus, textarea:focus {
 .conn-status-testing { background: var(--color-warning); }
 .conn-status-unknown { background: var(--color-text-muted); }
 
-.conn-list .del {
-  flex-shrink: 0;
-  font-size: 11px;
-  padding: 2px 8px;
-  border: none;
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  transition: background var(--transition-fast) ease, color var(--transition-fast) ease;
-}
-
-.conn-list li:hover .del { color: var(--color-text); }
-
-.conn-list .del:hover {
-  background: var(--color-danger);
-  color: var(--color-text-inverse);
-}
-
 /* ═══════════════════════════════════════════════
  * 5. 连接表单（ConnectionForm）
  * ═══════════════════════════════════════════════ */
@@ -624,8 +696,46 @@ input:focus, select:focus, textarea:focus {
   border-bottom: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   flex-shrink: 0;
+}
+
+/* 表单字段分组（S3：基本信息 / 认证信息 / 连接选项） */
+.conn-form-wrap {
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-muted);
+  flex-shrink: 0;
+}
+
+.conn-form-group {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  margin: 0;
+  padding: 8px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--color-surface);
+}
+
+.conn-form-group legend {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  padding: 0 4px;
+}
+
+.conn-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.conn-form-row {
+  display: flex;
+  gap: 8px;
 }
 
 .connection-form label {
@@ -660,7 +770,7 @@ input:focus, select:focus, textarea:focus {
 .connection-form .actions {
   display: flex;
   gap: 8px;
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 .connection-form button {
@@ -679,17 +789,24 @@ input:focus, select:focus, textarea:focus {
   box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
-.connection-form button[type='submit'] {
+.connection-form button[type='submit'],
+.connection-form button.primary {
   background: var(--color-primary);
   color: var(--color-text-inverse);
   border-color: var(--color-primary);
 }
 
-.connection-form button[type='submit']:hover {
+.connection-form button[type='submit']:hover,
+.connection-form button.primary:hover {
   background: var(--color-primary-hover);
 }
 
-.connection-form button[type='button']:hover {
+.connection-form button.ghost {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+}
+
+.connection-form button[type='button']:not(.ghost):hover {
   background: var(--color-surface-hover);
 }
 
@@ -1192,6 +1309,86 @@ input:focus, select:focus, textarea:focus {
   display: flex;
   flex-direction: column;
   max-height: 45vh;
+  min-height: 96px;
+  position: relative;
+}
+
+/* 结果区上边界拖拽条（§4.6） */
+.result-resize-handle {
+  flex-shrink: 0;
+  height: 5px;
+  cursor: row-resize;
+  background: transparent;
+  position: relative;
+  z-index: 2;
+}
+
+.result-resize-handle::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 2px;
+  height: 1px;
+  background: var(--color-border);
+  transition: background var(--transition-fast) ease;
+}
+
+.result-resize-handle:hover::after,
+.result-resize-handle:active::after {
+  background: var(--color-primary);
+}
+
+/* 结果工具栏（§4.6：结果集/行数/耗时/导出/筛选分层） */
+.result-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-muted);
+  flex-shrink: 0;
+  min-height: 30px;
+}
+
+.result-toolbar .result-tabs {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 0;
+  border-bottom: none;
+}
+
+.result-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.result-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 4px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast) ease, color var(--transition-fast) ease, border-color var(--transition-fast) ease;
+}
+
+.result-toolbar-btn:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.result-toolbar-btn.active {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
 }
 
 .result-empty {
@@ -1471,17 +1668,6 @@ input:focus, select:focus, textarea:focus {
 /* ═══════════════════════════════════════════════
  * 10. 导出（ExportMenu）
  * ═══════════════════════════════════════════════ */
-.toolbar-extras {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-  padding: 4px 10px;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-surface-muted);
-  flex-shrink: 0;
-}
-
 .export-menu {
   position: relative;
 }
@@ -1495,7 +1681,7 @@ input:focus, select:focus, textarea:focus {
 .export-dropdown {
   position: absolute;
   top: 100%;
-  left: 0;
+  right: 0;
   z-index: 10;
   background: var(--color-surface);
   border: 1px solid var(--color-border-strong);
@@ -1606,6 +1792,18 @@ input:focus, select:focus, textarea:focus {
   flex: 1;
   overflow-y: auto;
   padding: 8px 0;
+}
+
+/* 弹窗底部操作区（S4：主操作统一放右下角） */
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface-muted);
+  flex-shrink: 0;
 }
 
 .modal-loading,
@@ -1935,12 +2133,6 @@ input:focus, select:focus, textarea:focus {
   border-color: var(--color-primary);
 }
 
-.ai-settings-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 4px;
-}
-
 .ai-settings-btn {
   padding: 6px 20px;
   border: 1px solid var(--color-border);
@@ -2044,14 +2236,6 @@ input:focus, select:focus, textarea:focus {
 .export-table-input:focus {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 2px var(--focus-ring);
-}
-
-.export-table-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 12px 16px;
-  border-top: 1px solid var(--color-border);
 }
 
 .export-table-btn {

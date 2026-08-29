@@ -1,14 +1,17 @@
 /**
- * 连接管理面板（任务 8 ui-connection，体验优化 §14 增强）。
- * 加载连接列表、新增/保存/删除、选中连接并回调 onSelect。
+ * 连接管理面板（任务 8 ui-connection，体验优化 §14 增强，UI 重设计 S3）。
+ * 加载连接列表、新增/保存/编辑/删除、选中连接并回调 onSelect。
  * 通过 window.sqlStudio 调用主进程；连接摘要不含密码（铁律 R6）。
  *
- * 体验优化（2026-08-20 会话8）：
- *  - 连接状态指示：保存后自动测试连接，显示绿/灰/红圆点。
- *  - 测试通过 `connections:testById`（主进程解密配置，渲染零直连）。
+ * UI 重设计（实施规范 §5.3）：
+ *  - 连接项两行布局：第一行名称 + 状态，第二行 host/port/db 摘要。
+ *  - 新建连接按钮用图标 + tooltip。
+ *  - 编辑 / 测试 / 删除放入右侧更多菜单（不依赖 hover 才发现关键操作）。
+ *  - 编辑连接复用 ConnectionForm（connectionId + initial），保存走 connections:save（含 id）。
  */
 import { useEffect, useState } from 'react';
-import type { ConnectionSummary } from '@shared/types';
+import { Plus, MoreHorizontal, Pencil, Plug, Trash2, Server } from 'lucide-react';
+import type { ConnectionInput, ConnectionSummary } from '@shared/types';
 import { ConnectionForm } from './ConnectionForm';
 
 /** 连接状态（顶部应用栏/状态栏展示用）。 */
@@ -25,6 +28,10 @@ export function ConnectionManager({ onSelect, selectedId, onConnectionsChange }:
   const [connections, setConnections] = useState<ConnectionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  /** 编辑中的连接（id + 摘要，用于表单回填）。 */
+  const [editing, setEditing] = useState<ConnectionSummary | null>(null);
+  /** 更多菜单打开于哪个连接 id。 */
+  const [menuFor, setMenuFor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [connStatuses, setConnStatuses] = useState<Record<string, ConnStatus>>({});
 
@@ -62,10 +69,11 @@ export function ConnectionManager({ onSelect, selectedId, onConnectionsChange }:
     void refresh();
   }, []);
 
-  const handleSave = async (input: Parameters<typeof window.sqlStudio['connections:save']>[0]) => {
+  const handleSave = async (input: ConnectionInput & { id?: string }) => {
     try {
       const saved = await window.sqlStudio['connections:save'](input);
       setShowForm(false);
+      setEditing(null);
       await refresh();
       if (saved?.id) void testConnection(saved.id);
     } catch (err) {
@@ -73,7 +81,7 @@ export function ConnectionManager({ onSelect, selectedId, onConnectionsChange }:
     }
   };
 
-  const handleTest = async (input: Parameters<typeof window.sqlStudio['connections:test']>[0]) => {
+  const handleTest = async (input: ConnectionInput) => {
     const res = await window.sqlStudio['connections:test'](input);
     if (!res.ok) throw new Error(res.message);
   };
@@ -82,11 +90,19 @@ export function ConnectionManager({ onSelect, selectedId, onConnectionsChange }:
     if (!window.confirm('确定删除此连接？')) return;
     try {
       await window.sqlStudio['connections:remove']({ id });
+      setMenuFor(null);
       onSelect(null); // 清除选中状态
       await refresh();
     } catch (err) {
       window.alert(`删除失败：${err instanceof Error ? err.message : String(err)}`);
     }
+  };
+
+  /** 打开编辑表单：connections:get 取详情回填（连接摘要不含密码，密码留空 = 保留旧密码）。 */
+  const handleEdit = async (c: ConnectionSummary) => {
+    setMenuFor(null);
+    setShowForm(false);
+    setEditing(c);
   };
 
   if (loading) return <div className="conn-manager">加载中…</div>;
@@ -95,10 +111,37 @@ export function ConnectionManager({ onSelect, selectedId, onConnectionsChange }:
     <div className="conn-manager">
       <div className="conn-header">
         <h3>连接</h3>
-        <button onClick={() => setShowForm((v) => !v)}>{showForm ? '取消' : '新建连接'}</button>
+        <button
+          className="conn-add-btn"
+          onClick={() => {
+            setShowForm((v) => !v);
+            setEditing(null);
+          }}
+          title="新建连接"
+        >
+          <Plus size={14} />
+          <span>{showForm ? '取消' : '新建'}</span>
+        </button>
       </div>
       {error && <p className="error">{error}</p>}
-      {showForm && <ConnectionForm onSave={handleSave} onTest={handleTest} />}
+      {(showForm || editing) && (
+        <div className="conn-form-wrap">
+          <ConnectionForm
+            connectionId={editing?.id}
+            initial={editing ? {
+              name: editing.name,
+              host: editing.host,
+              port: editing.port,
+              user: editing.user,
+              database: editing.database,
+              charset: editing.charset,
+            } : undefined}
+            onSave={handleSave}
+            onTest={handleTest}
+            onCancel={() => { setShowForm(false); setEditing(null); }}
+          />
+        </div>
+      )}
       <ul className="conn-list">
         {connections.map((c) => {
           const status = connStatuses[c.id];
@@ -108,26 +151,69 @@ export function ConnectionManager({ onSelect, selectedId, onConnectionsChange }:
               className={c.id === selectedId ? 'selected' : ''}
               onClick={() => onSelect(c.id)}
             >
-              <span className={`conn-status conn-status-${status ?? 'unknown'}`} title={
-                status === 'testing' ? '测试中…'
-                : status === 'ok' ? '连接正常'
-                : status === 'error' ? '连接失败'
-                : '未测试'
-              } />
-              <span className="conn-name">{c.name}</span>
-              <span className="conn-meta">
-                {c.user}@{c.host}:{c.port}
-                {c.database ? `/${c.database}` : ''}
-              </span>
-              <button
-                className="del"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void handleRemove(c.id);
-                }}
-              >
-                删除
-              </button>
+              <div className="conn-row">
+                <Server size={15} className="conn-row-icon" />
+                <div className="conn-row-main">
+                  <div className="conn-row-line1">
+                    <span className={`conn-status conn-status-${status ?? 'unknown'}`} title={
+                      status === 'testing' ? '测试中…'
+                      : status === 'ok' ? '连接正常'
+                      : status === 'error' ? '连接失败'
+                      : '未测试'
+                    } />
+                    <span className="conn-name">{c.name}</span>
+                  </div>
+                  <div className="conn-row-line2">
+                    {c.user}@{c.host}:{c.port}
+                    {c.database ? `/${c.database}` : ''}
+                  </div>
+                </div>
+                <button
+                  className="conn-more-btn"
+                  title="更多操作"
+                  aria-label={`更多操作：${c.name}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuFor(menuFor === c.id ? null : c.id);
+                  }}
+                >
+                  <MoreHorizontal size={15} />
+                </button>
+              </div>
+              {menuFor === c.id && (
+                <div className="conn-menu">
+                  <button
+                    className="conn-menu-item"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMenuFor(null);
+                      void handleEdit(c);
+                    }}
+                  >
+                    <Pencil size={13} /> 编辑
+                  </button>
+                  <button
+                    className="conn-menu-item"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMenuFor(null);
+                      void testConnection(c.id);
+                    }}
+                  >
+                    <Plug size={13} /> 测试连接
+                  </button>
+                  <button
+                    className="conn-menu-item danger"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMenuFor(null);
+                      void handleRemove(c.id);
+                    }}
+                  >
+                    <Trash2 size={13} /> 删除
+                  </button>
+                </div>
+              )}
             </li>
           );
         })}

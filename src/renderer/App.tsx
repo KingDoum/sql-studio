@@ -4,7 +4,6 @@ import {
   History,
   Star,
   Settings,
-  X,
   CheckCircle2,
   AlertCircle,
   AlertTriangle,
@@ -16,7 +15,6 @@ import { ObjectExplorer } from '@renderer/components/ObjectExplorer';
 import { EditorTabs } from '@renderer/components/EditorTabs';
 import { SqlEditor, type SqlEditorHandle } from '@renderer/components/SqlEditor';
 import { ResultTabs } from '@renderer/components/ResultTabs';
-import { ExportMenu } from '@renderer/components/ExportMenu';
 import { HistoryPanel } from '@renderer/components/HistoryPanel';
 import { FavoritesPanel } from '@renderer/components/FavoritesPanel';
 import { AiSettingsPanel } from '@renderer/components/AiSettingsPanel';
@@ -24,6 +22,7 @@ import { SettingsPanel } from '@renderer/components/SettingsPanel';
 import { ensureDebugLogging } from '@renderer/lib/debug-log';
 import type { ConnectionSummary, ThemeMode } from '@shared/types';
 import { DataPreviewModal } from '@renderer/components/DataPreviewModal';
+import { Modal } from '@renderer/components/Modal';
 import { useWorkspace, useActiveTab } from '@renderer/store/workspace';
 import { buildSelectSql, splitStatements } from '@renderer/lib/sql-utils';
 import { hasWriteStatements } from '@renderer/lib/cell-format';
@@ -452,11 +451,6 @@ function App() {
             onSave={() => void handleSave()}
             onSaveAs={() => void handleSaveAs()}
           />
-          {activeTab && (
-            <div className="toolbar-extras">
-              <ExportMenu />
-            </div>
-          )}
           {activeTab ? (
             <div className="editor-pane">
               <SqlEditor
@@ -517,37 +511,36 @@ function App() {
         onClose={() => setShowFavorites(false)}
         onOpen={(name) => void handleOpenFavorite(name)}
       />
-      {/* 收藏命名弹窗 */}
-      {favoriteName !== null && (
-        <div className="modal-overlay" onClick={() => setFavoriteName(null)}>
-          <div className="modal-panel" onClick={(e) => e.stopPropagation()} style={{ width: 400 }}>
-            <div className="modal-header">
-              <h3>收藏命名</h3>
-              <button className="modal-close" onClick={() => setFavoriteName(null)}><X size={16} /></button>
-            </div>
-            <div className="modal-body" style={{ padding: '12px 16px' }}>
-              <label className="ai-settings-field">
-                <span>收藏名称</span>
-                <input
-                  value={favoriteName}
-                  autoFocus
-                  placeholder="如 每日活跃用户统计"
-                  onChange={(e) => setFavoriteName(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') void doSaveFavorite(); }}
-                />
-              </label>
-              <div className="ai-settings-actions">
-                <button className="ai-settings-btn primary" onClick={() => void doSaveFavorite()}>
-                  保存收藏
-                </button>
-                <button className="ai-settings-btn" onClick={() => setFavoriteName(null)}>
-                  取消
-                </button>
-              </div>
-            </div>
-          </div>
+      {/* 收藏命名弹窗（统一 Modal） */}
+      <Modal
+        open={favoriteName !== null}
+        onClose={() => setFavoriteName(null)}
+        title="收藏命名"
+        width={400}
+        footer={
+          <>
+            <button className="ai-settings-btn" onClick={() => setFavoriteName(null)}>
+              取消
+            </button>
+            <button className="ai-settings-btn primary" onClick={() => void doSaveFavorite()}>
+              保存收藏
+            </button>
+          </>
+        }
+      >
+        <div style={{ padding: '12px 16px' }}>
+          <label className="ai-settings-field">
+            <span>收藏名称</span>
+            <input
+              value={favoriteName ?? ''}
+              autoFocus
+              placeholder="如 每日活跃用户统计"
+              onChange={(e) => setFavoriteName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') void doSaveFavorite(); }}
+            />
+          </label>
         </div>
-      )}
+      </Modal>
       <SettingsPanel
         open={showSettings}
         theme={theme}

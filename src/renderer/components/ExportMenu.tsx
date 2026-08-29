@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Download } from 'lucide-react';
 import { useWorkspace } from '@renderer/store/workspace';
 import type { ExportExcelRequest, ExportInsertRequest, ExportCsvRequest } from '@shared/types';
+import { Modal } from './Modal';
 
 const LAST_EXPORT_DIR_KEY = 'lastExportDir';
 
@@ -201,45 +202,43 @@ export function ExportMenu() {
           </div>
         </>
       )}
-      {pendingInsert && (
-        <div className="modal-overlay" onClick={() => setPendingInsert(false)}>
-          <div className="modal-panel export-table-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>导出 SQL INSERT</h3>
-              <button className="modal-close" onClick={() => setPendingInsert(false)} title="关闭">
-                ✕
-              </button>
-            </div>
-            <div className="modal-body export-table-body">
-              <label className="export-table-label">
-                目标表名
-                <input
-                  className="export-table-input"
-                  value={tableName}
-                  autoFocus
-                  placeholder="如 orders"
-                  onChange={(e) => setTableName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') void doExportInsert();
-                  }}
-                />
-              </label>
-            </div>
-            <div className="export-table-actions">
-              <button className="export-table-btn" onClick={() => setPendingInsert(false)}>
-                取消
-              </button>
-              <button
-                className="export-table-btn primary"
-                disabled={!tableName.trim() || exporting}
-                onClick={() => void doExportInsert()}
-              >
-                {exporting ? '导出中…' : '下一步'}
-              </button>
-            </div>
-          </div>
+      <Modal
+        open={pendingInsert}
+        onClose={() => setPendingInsert(false)}
+        title="导出 SQL INSERT"
+        width={380}
+        panelClassName="export-table-modal"
+        footer={
+          <>
+            <button className="export-table-btn" onClick={() => setPendingInsert(false)}>
+              取消
+            </button>
+            <button
+              className="export-table-btn primary"
+              disabled={!tableName.trim() || exporting}
+              onClick={() => void doExportInsert()}
+            >
+              {exporting ? '导出中…' : '下一步'}
+            </button>
+          </>
+        }
+      >
+        <div className="export-table-body">
+          <label className="export-table-label">
+            目标表名
+            <input
+              className="export-table-input"
+              value={tableName}
+              autoFocus
+              placeholder="如 orders"
+              onChange={(e) => setTableName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void doExportInsert();
+              }}
+            />
+          </label>
         </div>
-      )}
+      </Modal>
     </div>
   );
 }

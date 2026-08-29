@@ -710,24 +710,39 @@ npm run build
 - DOM 探测确认：选中连接后顶部栏显示连接名/摘要/「已连接」、对象浏览器、状态栏联动正常。
 - 验证脚本：`tests/e2e/ui-layout-check.mjs`、`tests/e2e/s2-dom-probe.mjs`（Playwright 无头 + mock sqlStudio）。
 
-#### S3 核心工作区（部分）✅
+#### S3 核心工作区 ✅
 
-提交：`470ef67`
+提交：`470ef67`（图标规范化）+ `c914e46`（连接管理/结果区改造）
 
 - ObjectExplorer：emoji / 字符箭头 → lucide（Database/Table2/Eye/KeyRound/ChevronRight/ChevronDown/RefreshCw/PlayCircle），树层级、展开态、右键菜单保留。
 - SqlEditor 工具栏：📁▶⏹ → FolderOpen/Play/Square，数据库提示改 inline-flex。
-- ResultTabs：⚠ → AlertTriangle；空提示去掉 ▶ 字符。
-- 同步更新 `tests/renderer/sql-editor.test.tsx` 断言（`'▶ 执行'` → `'执行'`）。
+- ConnectionManager：连接项两行布局（第一行名称+状态，第二行 `user@host:port/db` 摘要），新建按钮图标+tooltip，编辑/测试/删除移入更多菜单（不依赖 hover），编辑复用 ConnectionForm（`connectionId` + `initial`）。
+- ConnectionForm：字段分组（基本信息 / 认证信息 / 连接选项），编辑模式密码留空 = 保留旧密码，表单错误就近显示。
+- ResultTabs：结果工具栏分层（结果集标签 / 筛选开关 / 导出 ExportMenu），结果区上边界拖拽条（pointer events，最小 120px / 最大 80vh）。
+- ResultGrid：筛选行可开关（`showFilter` 由结果工具栏控制），表头/筛选/表体仍共用同一列宽源。
+- ExportMenu 移入结果工具栏（原 `toolbar-extras` 移除）。
+- 同步更新 `tests/renderer/sql-editor.test.tsx`、`connection-manager.test.tsx`、`result-tabs.test.tsx` 断言。
 
-### 14.2 待完成（⏳）
+#### S4 辅助面板弹窗统一 ✅
 
-- S3 剩余：`ConnectionManager` 连接项两行布局（名称/状态 + 主机/端口/数据库摘要）、编辑/测试/删除移入更多菜单、字段类型/注释列对齐。
-- S3 剩余：`ResultGrid` / `ResultTabs` 结果工具栏（行数/耗时/导出/筛选入口分层）、结果区上边界高度拖拽。
-- S4：`ExportMenu` / `HistoryPanel` / `FavoritesPanel` / `SettingsPanel` / `AiSettingsPanel` / `DataPreviewModal` 弹窗统一结构。
-- S5：深色/浅色主题最终视觉走查、重点状态（执行中/截断/错误）截图、最终验收清单逐项勾选。
+提交：`c914e46`
 
-### 14.3 遗留问题
+- 新增 `Modal.tsx` 统一弹窗组件：遮罩（低透明度纯色）/ 标题栏 / lucide 关闭按钮 / Escape 关闭 / 遮罩点击关闭 / 底部操作区（footer 右对齐）。
+- `DataPreviewModal` / `HistoryPanel` / `FavoritesPanel` / `SettingsPanel` / `AiSettingsPanel` / `ExportMenu`（INSERT 弹窗）/ `App`（收藏命名）全部接入 Modal。
+- 统一关闭按钮为 lucide `X`（移除 `✕` 字符）；移除死 CSS（`.ai-settings-actions` / `.export-table-actions` / `.toolbar-extras`）。
 
-- 结果区仍作为编辑器下方附属区域，未实现可调高度上边界拖拽条（规范 §4.6）。
-- 深色/浅色主题切换的最终视觉效果尚未做图形化走查（本环境为 NAS 无头，用 Playwright 截图代替真实 Electron 窗口）。
+#### S5 验证和收尾 ✅
+
+提交：`294ca8f`（验证产物 + 脚本）
+
+- `npm run typecheck`、`npm test`（28 文件 / 241 用例）、`npm run build` 全部通过。
+- 四窗口尺寸（1440×900 / 1280×800 / 1024×700 / 900×700）无横向溢出；结果工具栏 / 拖拽条 / 统一 Modal / Escape 关闭均正常。
+- 重点状态验证：执行中（停止按钮可见 + 状态栏「执行中」）、查询错误（错误面板 + 状态栏「执行失败」）、截断（结果区 + 底部状态栏双重警告）。
+- 截图：`docs/ui-screenshots/S3-*.png`（16 张）、`S5-{executing,error,truncated}.png`（3 张）。
+- 验证脚本：`tests/e2e/ui-layout-check.mjs`、`tests/e2e/ui-state-check.mjs`。
+
+### 14.2 遗留问题
+
+- 深色/浅色主题切换的最终视觉效果尚未在真实 Electron 窗口图形化走查（本环境为 NAS 无头，用 Playwright 截图代替）。
 - 顶部应用栏连接状态依赖 `connections:testById` 的自动测试结果；未测试连接显示「未测试」。
+- 结果区高度拖拽无持久化（刷新后恢复默认高度），后续可存 settings。

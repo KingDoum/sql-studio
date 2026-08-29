@@ -741,8 +741,22 @@ npm run build
 - 截图：`docs/ui-screenshots/S3-*.png`（16 张）、`S5-{executing,error,truncated}.png`（3 张）。
 - 验证脚本：`tests/e2e/ui-layout-check.mjs`、`tests/e2e/ui-state-check.mjs`。
 
-### 14.2 遗留问题
+### 14.2 独立代码审查（会话 9s 收尾）✅
+
+提交：`8b089d0`
+
+独立审查覆盖 `0678251`（S1）之后全部提交，重点核对功能回归 / 类型隐患 / 交互边界 / 规范偏差。已修复：
+
+- **P0**：ResultTabs 结果集越界回归（恢复 `safeSet` 钳制）；ConnectionManager 更多菜单外点关闭（加 backdrop）；`rename-input` / `grid-filter-input` 键盘焦点环（§8 红线）。
+- **P1**：ExportMenu 导出活跃结果集（`resultSet` prop）；History/Favorites 删除加确认；Modal 增加 `aria-labelledby` / 打开聚焦 / 语义化 width（移除字符串匹配 hack）；SqlEditor 移除 onMount 无效 cleanup；ConnStatus 补 `'unknown'`；ResultGrid 排序箭头换 lucide；EditorTabs `×` 换 lucide X；ObjectExplorer 错误重试 + 子级失败不覆盖整树；搜索/筛选/重命名输入补 aria-label；连接加载改 spinner；清理 `.status-warn` 重复定义与 `.conn-add-btn` 样式。
+
+审查后全量验证：typecheck ✅ / renderer 116 用例 ✅ / `npm test` 241 用例 ✅ / `npm run build` ✅ / 四尺寸布局 ✅ / 执行中·错误·截断状态 ✅。
+
+### 14.3 遗留问题（不影响交付，可后续处理）
 
 - 深色/浅色主题切换的最终视觉效果尚未在真实 Electron 窗口图形化走查（本环境为 NAS 无头，用 Playwright 截图代替）。
 - 顶部应用栏连接状态依赖 `connections:testById` 的自动测试结果；未测试连接显示「未测试」。
 - 结果区高度拖拽无持久化（刷新后恢复默认高度），后续可存 settings。
+- `applyFontSize` 设置的 `--fs-*` CSS 变量目前无面板 UI 消费（字号滑块只影响 Monaco 编辑器），如需同步面板字号需在主题 CSS 中接入这些变量。
+- 取消查询后结果面板显示「执行失败」（AbortError 落入 error 分支），语义上应为「已取消」，后续可在 App 捕获 AbortError 单独处理。
+- `*.bak.*` 文件已由 `.gitignore` 忽略且无源码引用，符合回退策略，后续可评估移出仓库。

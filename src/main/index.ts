@@ -93,6 +93,17 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-app.on('before-quit', () => {
-  connectionManager.closeAll();
+// 退出时序：will-quit 支持 preventDefault + 异步等待，确保 closeAll() 完成后再真正退出。
+// 用标志位防重入（await 期间的再次 quit 触发 will-quit 时直接放行）。
+let isCleaningUp = false;
+app.on('will-quit', (event) => {
+  if (isCleaningUp) return;
+  event.preventDefault();
+  isCleaningUp = true;
+  const closeAllPromise = (connectionManager?.closeAll() ?? Promise.resolve()).catch(() => {
+    // 关闭连接池失败不影响退出
+  });
+  // 超时兜底：即使某连接池 end() 挂起，也保证应用能退出
+  const timeout = new Promise<void>((resolve) => setTimeout(resolve, 3000));
+  Promise.race([closeAllPromise, timeout]).finally(() => app.quit());
 });

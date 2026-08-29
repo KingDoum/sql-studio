@@ -31,7 +31,7 @@ export interface RawResultSet {
 }
 
 /** 执行函数签名（由 ConnectionManager 或 mock 提供）。 */
-export type QueryExecutor = (sql: string) => Promise<RawResultSet[]>;
+export type QueryExecutor = (sql: string, signal?: AbortSignal) => Promise<RawResultSet[]>;
 
 /** 主进程常量（铁律 R5：单一来源）。 */
 export const QUERY_CONFIG = {
@@ -204,7 +204,7 @@ export class QueryService {
     let rawSets: RawResultSet[] = [];
     try {
       if (signal?.aborted) throw new DOMException('已取消', 'AbortError');
-      rawSets = await this.executor(sql);
+      rawSets = await this.executor(sql, signal);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') throw err;
       throw err;

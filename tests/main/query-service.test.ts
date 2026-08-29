@@ -104,6 +104,32 @@ describe('QueryService.run', () => {
     await expect(svc.run({ connectionId: 'c1', sql: 'SELECT 1' }, controller.signal)).rejects.toThrow(/已取消/);
   });
 
+  it('signal 透传给 executor（取消链路贯通）', async () => {
+    const received: AbortSignal[] = [];
+    const svc = new QueryService((sql, signal) => {
+      received.push(signal as AbortSignal);
+      return Promise.resolve([makeSet(1)]);
+    });
+    const controller = new AbortController();
+    const res = await svc.run({ connectionId: 'c1', sql: 'SELECT 1' }, controller.signal);
+    expect(res.resultSets).toHaveLength(1);
+    expect(received).toHaveLength(1);
+    expect(received[0]).toBe(controller.signal);
+  });
+
+  it('执行中 abort → executor 抛 AbortError 且保持 AbortError 语义', async () => {
+    const controller = new AbortController();
+    const svc = new QueryService((_sql, signal) => {
+      // 模拟执行中取消：连接被销毁时 signal 触发，executor 抛 AbortError
+      return new Promise((_resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(new DOMException('已取消', 'AbortError')), { once: true });
+      });
+    });
+    const promise = svc.run({ connectionId: 'c1', sql: 'SELECT 1' }, controller.signal);
+    controller.abort();
+    await expect(promise).rejects.toThrow(/已取消/);
+  });
+
   it('statement 字段取前 200 字符', async () => {
     const longSql = 'SELECT ' + 'a'.repeat(300);
     const svc = makeService([makeSet(1)]);

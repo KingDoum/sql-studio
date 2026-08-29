@@ -117,6 +117,37 @@ describe('registerIpc', () => {
     expect(hist.data.length).toBe(1);
   });
 
+  it('query:cancel 端到端触发 executeMany 收到已 abort 的 signal', async () => {
+    const conn = metadataStore.saveConnection({ name: 'c1', host: 'h', port: 3306, user: 'u', password: 'p', charset: 'utf8mb4' });
+    // 捕获传入 executeMany 的 signal；让查询挂起直至被取消
+    let capturedSignal: AbortSignal | undefined;
+    let resolveExec: (() => void) | undefined;
+    const fakeCm = deps.connectionManager as unknown as {
+      executeMany: (c: unknown, sql: string, signal?: AbortSignal) => Promise<RawResultSet[]>;
+    };
+    fakeCm.executeMany = (_c, _sql, signal) => {
+      capturedSignal = signal;
+      return new Promise((resolve) => {
+        resolveExec = () => resolve([{ rows: [{ id: 1 }], fields: [{ name: 'id' }], affectedRows: 0, isWrite: false }]);
+      });
+    };
+
+    const execFn = handlers.get('query:execute')!;
+    const cancelFn = handlers.get('query:cancel')!;
+    const pending = execFn(null, { connectionId: conn.id, sql: 'SELECT SLEEP(10)', clientQueryId: 'abc' });
+    // 取消查询
+    const cancelRes = (await cancelFn(null, { connectionId: conn.id, queryId: 'abc' })) as { ok: true; data: { cancelled: boolean } };
+    expect(cancelRes.ok).toBe(true);
+    expect(cancelRes.data.cancelled).toBe(true);
+    // signal 应已到达 executeMany 且处于 aborted
+    expect(capturedSignal).toBeDefined();
+    expect(capturedSignal?.aborted).toBe(true);
+    // 放行挂起的执行，避免遗留未决 Promise
+    resolveExec?.();
+    const execRes = (await pending) as { ok: boolean };
+    expect(execRes.ok).toBe(true);
+  });
+
   it('query:execute 异常被包装为 {ok:false}', async () => {
     const conn = metadataStore.saveConnection({ name: 'c1', host: 'h', port: 3306, user: 'u', password: 'p', charset: 'utf8mb4' });
     const fakeCm = deps.connectionManager as unknown as { executeMany: (c: unknown, sql: string) => Promise<RawResultSet[]> };

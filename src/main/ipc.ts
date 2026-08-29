@@ -48,15 +48,15 @@ function fail(err: unknown): { ok: false; error: string; errorType?: string } {
  * 构造一个针对某连接的 query executor（多结果集）。
  * 渲染进程仅传 connectionId，明文配置由 metadataStore 在主进程解密取出。
  */
-function makeExecutor(deps: IpcDeps, connectionId: string, database?: string): (sql: string) => Promise<RawResultSet[]> {
+function makeExecutor(deps: IpcDeps, connectionId: string, database?: string): (sql: string, signal?: AbortSignal) => Promise<RawResultSet[]> {
   const config = deps.metadataStore.getConnectionConfig(connectionId);
   if (!config) throw new Error(`连接不存在: ${connectionId}`);
-  return (sql: string) => {
+  return (sql: string, signal?: AbortSignal) => {
     // 如果传入了 database 且与连接配置不同，自动加 USE 前缀（解决 no database selected）
     const finalSql = database && database !== config.database
       ? `USE \`${database.replace(/`/g, '``')}\`;\n${sql}`
       : sql;
-    return deps.connectionManager.executeMany(config as ConnectionConfig, finalSql);
+    return deps.connectionManager.executeMany(config as ConnectionConfig, finalSql, signal);
   };
 }
 

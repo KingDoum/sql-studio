@@ -677,3 +677,57 @@ npm run build
 6. 不修改 Main、Preload、Shared、数据库和 IPC，除非发现 UI 契约确实不足并先说明。
 7. 不用“换一套颜色”冒充 UI 重设计，必须落实布局、组件、状态、图标、间距和多尺寸验证。
 8. 最终汇报必须包含：修改文件、设计变化、功能回归结果、测试命令、截图或窗口验证结果、遗留问题。
+
+---
+
+## 14. 实施进度（会话 9s，2026-08-30）
+
+> 本进度表只反映已经提交且通过验证的阶段。标注 ⏳ 的条目尚未完成，不得提前标记为完成。
+
+### 14.1 已完成
+
+#### S1 建立设计系统 ✅
+
+提交：`0678251 会话9s S1完成：建立设计系统`
+
+- `theme.css` 重写为 17 分区设计系统，建立 `--color-*` / `--radius-*` / `--space-*` / `--shadow-*` / `--font-*` / `--transition-*` 令牌。
+- 清除磨砂玻璃（backdrop-filter）、glow、渐变、后置重复覆盖；深色默认 + `[data-theme="light"]` 同令牌覆盖。
+- 统一按钮/输入框/菜单/弹窗/焦点环交互状态；补 `.error` 统一样式缺口。
+- 验收：`npx tsc --noEmit` 通过；`npx vitest run tests/renderer/` 15 文件 / 116 用例通过。
+- 附 S1 前后窗口截图：`docs/ui-screenshots/01-empty.png`、`02-withconn.png`。
+
+#### S2 重做页面骨架 ✅
+
+提交：`470ef67`（代码）+ `a3a034a`（验收产物）
+
+- 新增顶部应用栏：品牌图标 + 标题 | 当前连接（状态点 + 名称 + `user@host:port/db` 摘要 + 状态文字）| 设置入口（图标按钮 + tooltip）。
+- 连接状态使用图标 + 颜色 + 文字组合（lucide CheckCircle2/AlertCircle/Loader2/Circle），testing 状态旋转动画，不只用色点。
+- 新增底部状态栏（26px）：连接 | 数据库 | 查询状态 | 耗时 | 行数 | 截断警告，低干扰、不放置按钮。
+- 主工作区改为 `top-bar + app-body + status-bar` 三段纵向布局；历史/收藏/设置移入顶部栏图标按钮；`toolbar-extras` 精简为导出入口。
+- `ConnectionManager` 新增可选 `onConnectionsChange` 回调上报连接列表/状态（未改 IPC 契约，App 用其驱动顶部栏与状态栏）。
+- 验收：`npm run typecheck` 通过；`npm test` 28 文件 / 241 用例通过；`npm run build` 通过。
+- 四窗口尺寸（1440×900 / 1280×800 / 1024×700 / 900×700）无横向溢出，截图见 `docs/ui-screenshots/S2-*.png`。
+- DOM 探测确认：选中连接后顶部栏显示连接名/摘要/「已连接」、对象浏览器、状态栏联动正常。
+- 验证脚本：`tests/e2e/ui-layout-check.mjs`、`tests/e2e/s2-dom-probe.mjs`（Playwright 无头 + mock sqlStudio）。
+
+#### S3 核心工作区（部分）✅
+
+提交：`470ef67`
+
+- ObjectExplorer：emoji / 字符箭头 → lucide（Database/Table2/Eye/KeyRound/ChevronRight/ChevronDown/RefreshCw/PlayCircle），树层级、展开态、右键菜单保留。
+- SqlEditor 工具栏：📁▶⏹ → FolderOpen/Play/Square，数据库提示改 inline-flex。
+- ResultTabs：⚠ → AlertTriangle；空提示去掉 ▶ 字符。
+- 同步更新 `tests/renderer/sql-editor.test.tsx` 断言（`'▶ 执行'` → `'执行'`）。
+
+### 14.2 待完成（⏳）
+
+- S3 剩余：`ConnectionManager` 连接项两行布局（名称/状态 + 主机/端口/数据库摘要）、编辑/测试/删除移入更多菜单、字段类型/注释列对齐。
+- S3 剩余：`ResultGrid` / `ResultTabs` 结果工具栏（行数/耗时/导出/筛选入口分层）、结果区上边界高度拖拽。
+- S4：`ExportMenu` / `HistoryPanel` / `FavoritesPanel` / `SettingsPanel` / `AiSettingsPanel` / `DataPreviewModal` 弹窗统一结构。
+- S5：深色/浅色主题最终视觉走查、重点状态（执行中/截断/错误）截图、最终验收清单逐项勾选。
+
+### 14.3 遗留问题
+
+- 结果区仍作为编辑器下方附属区域，未实现可调高度上边界拖拽条（规范 §4.6）。
+- 深色/浅色主题切换的最终视觉效果尚未做图形化走查（本环境为 NAS 无头，用 Playwright 截图代替真实 Electron 窗口）。
+- 顶部应用栏连接状态依赖 `connections:testById` 的自动测试结果；未测试连接显示「未测试」。

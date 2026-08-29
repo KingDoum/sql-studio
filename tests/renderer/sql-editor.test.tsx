@@ -76,7 +76,7 @@ describe('SqlEditor', () => {
       />,
     );
     expect(await screen.findByText('未连接')).toBeTruthy();
-    fireEvent.click(screen.getByText('▶ 执行'));
+    fireEvent.click(screen.getByText('执行'));
   });
 
   it('工具栏含格式化与执行按钮', async () => {
@@ -89,6 +89,6 @@ describe('SqlEditor', () => {
       />,
     );
     expect(await screen.findByText('格式化')).toBeTruthy();
-    expect(screen.getByText('▶ 执行')).toBeTruthy();
+    expect(screen.getByText('执行')).toBeTruthy();
   });
 });

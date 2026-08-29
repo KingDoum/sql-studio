@@ -5,6 +5,7 @@
  *   - 状态栏：总耗时 / 行数合计 / 截断提示 / 写语句提示。
  */
 import { useState } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { useWorkspace } from '@renderer/store/workspace';
 import { ResultGrid } from './ResultGrid';
 
@@ -16,7 +17,7 @@ export function ResultTabs() {
     return (
       <div className="result-panel">
         <div className="result-empty">
-          暂无查询结果 —— 在编辑器中按 Ctrl+Enter（或点「▶ 执行」）执行 SQL
+          暂无查询结果 —— 在编辑器中按 Ctrl+Enter（或点「执行」）执行 SQL
         </div>
       </div>
     );
@@ -26,7 +27,7 @@ export function ResultTabs() {
     return (
       <div className="result-panel">
         <div className="result-error">
-          <div className="result-error-title">⚠ 执行失败</div>
+          <div className="result-error-title"><AlertTriangle size={13} /> 执行失败</div>
           <pre className="result-error-msg">{execution.error}</pre>
           <div className="result-error-sql">{execution.sql}</div>
         </div>
@@ -51,7 +52,7 @@ export function ResultTabs() {
               onClick={() => setActiveSet(i)}
             >
               结果 {i + 1}
-              {rs.truncated ? ' ⚠' : ''}
+              {rs.truncated ? <AlertTriangle size={11} /> : ''}
               <span className="result-tab-meta">{rs.rows.length} 行</span>
             </button>
           ))}
@@ -65,9 +66,9 @@ export function ResultTabs() {
         <span>共 {result.resultSets.length} 个结果集</span>
         <span>合计 {totalRows} 行</span>
         {result.truncated && (
-          <span className="status-warn">⚠ 结果超出上限已截断（仅显示前 5 万行）</span>
+          <span className="status-warn"><AlertTriangle size={11} /> 结果超出上限已截断（仅显示前 5 万行）</span>
         )}
-        {result.hasWrite && <span className="status-warn">⚠ 包含写操作</span>}
+        {result.hasWrite && <span className="status-warn"><AlertTriangle size={11} /> 包含写操作</span>}
       </div>
     </div>
   );

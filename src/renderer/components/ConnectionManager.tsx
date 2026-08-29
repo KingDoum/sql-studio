@@ -11,17 +11,27 @@ import { useEffect, useState } from 'react';
 import type { ConnectionSummary } from '@shared/types';
 import { ConnectionForm } from './ConnectionForm';
 
+/** 连接状态（顶部应用栏/状态栏展示用）。 */
+export type ConnStatus = 'testing' | 'ok' | 'error';
+
 export interface ConnectionManagerProps {
   onSelect: (id: string | null) => void;
   selectedId?: string;
+  /** 连接列表/状态变化时上报（App 用于顶部应用栏与底部状态栏展示，可选）。 */
+  onConnectionsChange?: (connections: ConnectionSummary[], statuses: Record<string, ConnStatus>) => void;
 }
 
-export function ConnectionManager({ onSelect, selectedId }: ConnectionManagerProps) {
+export function ConnectionManager({ onSelect, selectedId, onConnectionsChange }: ConnectionManagerProps) {
   const [connections, setConnections] = useState<ConnectionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [connStatuses, setConnStatuses] = useState<Record<string, 'testing' | 'ok' | 'error'>>({});
+  const [connStatuses, setConnStatuses] = useState<Record<string, ConnStatus>>({});
+
+  // 连接列表/状态变化时上报父组件（顶部应用栏与底部状态栏数据源）
+  useEffect(() => {
+    onConnectionsChange?.(connections, connStatuses);
+  }, [connections, connStatuses, onConnectionsChange]);
 
   const refresh = async () => {
     try {

@@ -236,9 +236,144 @@ input:focus, select:focus, textarea:focus {
  * ═══════════════════════════════════════════════ */
 .app-shell {
   display: flex;
+  flex-direction: column;
   height: 100vh;
   overflow: hidden;
   background: var(--color-bg);
+}
+
+/* ── 顶部应用栏（§4.1）── */
+.top-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 40px;
+  padding: 0 12px;
+  flex-shrink: 0;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.top-bar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.top-bar-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-control);
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  flex-shrink: 0;
+}
+
+.top-bar-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.top-bar-conn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 0 4px;
+}
+
+.top-bar-conn-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+.top-bar-conn-meta {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+.top-bar-conn-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--radius-control);
+  flex-shrink: 0;
+}
+
+.top-bar-conn-state-ok { color: var(--color-success); background: var(--color-success-soft); }
+.top-bar-conn-state-error { color: var(--color-danger); background: var(--color-danger-soft); }
+.top-bar-conn-state-testing { color: var(--color-warning); background: var(--color-warning-soft); }
+.top-bar-conn-state-unknown { color: var(--color-text-secondary); background: var(--color-surface-muted); }
+
+.top-bar-conn-empty {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.top-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.top-bar-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast) ease, color var(--transition-fast) ease;
+}
+
+.top-bar-icon-btn:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.top-bar-icon-btn:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+/* 执行中状态图标旋转（不再使用闪烁光效） */
+.spin {
+  animation: dsh-spin 1s linear infinite;
+}
+
+@keyframes dsh-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ── 主工作区分区（顶栏下：资源侧栏 + 中央工作区）── */
+.app-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
 }
 
 .sidebar {
@@ -248,33 +383,7 @@ input:focus, select:focus, textarea:focus {
   flex-shrink: 0;
   background: var(--color-surface);
   border-right: 1px solid var(--color-border);
-}
-
-.sidebar-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--color-border);
-  flex-shrink: 0;
-  background: var(--color-surface-muted);
-}
-
-.sidebar-logo {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-panel);
-  background: var(--color-primary);
-  color: var(--color-text-inverse);
-}
-
-.sidebar-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--color-text);
+  min-height: 0;
 }
 
 .sidebar-panel {
@@ -338,6 +447,39 @@ input:focus, select:focus, textarea:focus {
 .placeholder-hint {
   font-size: 11px;
   opacity: 0.5;
+}
+
+/* ── 底部状态栏（§4.7）── */
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 26px;
+  padding: 0 12px;
+  flex-shrink: 0;
+  background: var(--color-surface-muted);
+  border-top: 1px solid var(--color-border);
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.status-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-warn {
+  color: var(--color-warning);
+}
+
+/* 状态栏截断提示高亮 */
+.status-item.status-warn {
+  font-weight: 500;
 }
 
 /* ═══════════════════════════════════════════════
@@ -660,13 +802,24 @@ input:focus, select:focus, textarea:focus {
 }
 
 .tree-arrow {
-  display: inline-block;
-  width: 12px;
-  text-align: center;
-  font-size: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
   color: var(--color-text-secondary);
   flex-shrink: 0;
   transition: transform var(--transition-fast) ease;
+}
+
+/* 对象树类型图标（S3：lucide 统一） */
+.db-icon { color: var(--color-info); flex-shrink: 0; }
+.table-icon { color: var(--color-text-secondary); flex-shrink: 0; }
+.view-icon { color: var(--color-success); flex-shrink: 0; }
+.db-name,
+.table-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .table-list {
@@ -679,6 +832,9 @@ input:focus, select:focus, textarea:focus {
 
 .table-item .preview {
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   font-size: 10px;
   padding: 1px 6px;
   border: 1px solid var(--color-border);
@@ -940,6 +1096,9 @@ input:focus, select:focus, textarea:focus {
 }
 
 .sql-editor-db {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 11px;
   color: var(--color-text-secondary);
   flex: 1;
@@ -1315,30 +1474,12 @@ input:focus, select:focus, textarea:focus {
 .toolbar-extras {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 4px;
   padding: 4px 10px;
   border-bottom: 1px solid var(--color-border);
   background: var(--color-surface-muted);
   flex-shrink: 0;
-}
-
-.toolbar-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  padding: 4px 10px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--color-text);
-  cursor: pointer;
-  transition: background var(--transition-fast) ease, color var(--transition-fast) ease;
-}
-
-.toolbar-btn:hover {
-  background: var(--color-surface-hover);
-  color: var(--color-primary);
 }
 
 .export-menu {

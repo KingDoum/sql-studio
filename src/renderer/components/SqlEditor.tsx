@@ -15,7 +15,7 @@
 import React, { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import Editor, { type BeforeMount, type OnMount } from '@monaco-editor/react';
 import { format } from 'sql-formatter';
-import { Brain } from 'lucide-react';
+import { Brain, FolderOpen, Play, Square } from 'lucide-react';
 import type { ColumnMeta, EditorTab, TableMeta, ThemeMode } from '@shared/types';
 import { getCurrentStatement, splitStatements } from '@renderer/lib/sql-utils';
 import {
@@ -419,7 +419,7 @@ const beforeMount: BeforeMount = useCallback((monaco) => {
           {schemaLoading
             ? '加载 schema…'
             : snapshotRef.current
-              ? `📁 ${snapshotRef.current.database}`
+              ? <> <FolderOpen size={12} /> {snapshotRef.current.database}</>
               : connectionId
                 ? 'schema 加载失败'
                 : '未连接'}
@@ -444,7 +444,7 @@ const beforeMount: BeforeMount = useCallback((monaco) => {
             title="停止执行"
             onClick={onCancelQuery}
           >
-            ⏹ 停止
+            <Square size={13} /> 停止
           </button>
         ) : (
           <button
@@ -452,7 +452,7 @@ const beforeMount: BeforeMount = useCallback((monaco) => {
             title="执行 (Ctrl+Enter)"
             onClick={handleExecute}
           >
-            ▶ 执行
+            <Play size={13} /> 执行
           </button>
         )}
       </div>

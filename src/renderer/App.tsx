@@ -1,6 +1,17 @@
 import { useState, useRef, useEffect } from 'react';
-import { Database, History, Star, Settings, X } from 'lucide-react';
-import { ConnectionManager } from '@renderer/components/ConnectionManager';
+import {
+  Database,
+  History,
+  Star,
+  Settings,
+  X,
+  CheckCircle2,
+  AlertCircle,
+  AlertTriangle,
+  Loader2,
+  Circle,
+} from 'lucide-react';
+import { ConnectionManager, type ConnStatus } from '@renderer/components/ConnectionManager';
 import { ObjectExplorer } from '@renderer/components/ObjectExplorer';
 import { EditorTabs } from '@renderer/components/EditorTabs';
 import { SqlEditor, type SqlEditorHandle } from '@renderer/components/SqlEditor';
@@ -11,11 +22,19 @@ import { FavoritesPanel } from '@renderer/components/FavoritesPanel';
 import { AiSettingsPanel } from '@renderer/components/AiSettingsPanel';
 import { SettingsPanel } from '@renderer/components/SettingsPanel';
 import { ensureDebugLogging } from '@renderer/lib/debug-log';
-import type { ThemeMode } from '@shared/types';
+import type { ConnectionSummary, ThemeMode } from '@shared/types';
 import { DataPreviewModal } from '@renderer/components/DataPreviewModal';
 import { useWorkspace, useActiveTab } from '@renderer/store/workspace';
 import { buildSelectSql, splitStatements } from '@renderer/lib/sql-utils';
 import { hasWriteStatements } from '@renderer/lib/cell-format';
+
+/** 连接状态 → 图标（顶部应用栏，图标+颜色+文字组合）。 */
+const CONN_STATUS_META: Record<string, { icon: typeof Circle; text: string }> = {
+  ok: { icon: CheckCircle2, text: '已连接' },
+  error: { icon: AlertCircle, text: '连接失败' },
+  testing: { icon: Loader2, text: '连接中' },
+  unknown: { icon: Circle, text: '未测试' },
+};
 
 /**
  * 工作台（任务 8-9 UI 集成）。
@@ -24,6 +43,8 @@ import { hasWriteStatements } from '@renderer/lib/cell-format';
  */
 function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [connections, setConnections] = useState<ConnectionSummary[]>([]);
+  const [connStatuses, setConnStatuses] = useState<Record<string, ConnStatus>>({});
   const [showHistory, setShowHistory] = useState(false);
   const [showFavorites, setShowFavorites] = useState(false);
   const [showAiSettings, setShowAiSettings] = useState(false);
@@ -105,6 +126,7 @@ function App() {
     tabs,
     activeTabId,
     currentConnectionId,
+    execution,
     executing,
     setConnection,
     newTab,
@@ -117,6 +139,18 @@ function App() {
     setExecuting,
   } = useWorkspace();
   const activeTab = useActiveTab();
+
+  // 当前连接摘要（顶部应用栏/底部状态栏展示）
+  const currentConn = connections.find((c) => c.id === selectedId) ?? null;
+  const currentConnStatus: ConnStatus | undefined = selectedId ? connStatuses[selectedId] : undefined;
+
+  const handleConnectionsChange = (
+    list: ConnectionSummary[],
+    statuses: Record<string, ConnStatus>,
+  ) => {
+    setConnections(list);
+    setConnStatuses(statuses);
+  };
 
   const handleSelectConnection = (id: string | null) => {
     setSelectedId(id);
@@ -321,94 +355,157 @@ function App() {
 
   const handleCloseTab = (id: string) => closeTab(id);
 
+  // ── 顶部应用栏 / 底部状态栏派生数据 ──
+  const statusKey = currentConnStatus ?? 'unknown';
+  const StatusIcon = CONN_STATUS_META[statusKey].icon;
+  const statusText = CONN_STATUS_META[statusKey].text;
+  const totalRows = execution?.result?.resultSets.reduce((n, rs) => n + rs.rows.length, 0) ?? 0;
+  const queryStatusText = executing
+    ? '执行中'
+    : execution?.error
+      ? '执行失败'
+      : execution?.result
+        ? '执行完成'
+        : '就绪';
+  const currentDb = execution?.database ?? currentConn?.database;
+
   return (
     <div className="app-shell">
-      {/* 左侧边栏 */}
-      <aside className="sidebar">
-        <div className="sidebar-header">
-          <span className="sidebar-logo">
-            <Database size={18} strokeWidth={1.8} />
+      {/* 顶部应用栏：品牌 | 当前连接 | 连接状态 | 设置 */}
+      <header className="top-bar">
+        <div className="top-bar-brand">
+          <span className="top-bar-logo">
+            <Database size={16} strokeWidth={1.8} />
           </span>
-          <span className="sidebar-title">SQL Studio</span>
+          <span className="top-bar-title">SQL Studio</span>
         </div>
-
-        <div className="sidebar-panel panel-connections">
-          <ConnectionManager onSelect={handleSelectConnection} selectedId={selectedId ?? undefined} />
+        <div className="top-bar-conn">
+          {currentConn ? (
+            <>
+              <span className={`conn-status conn-status-${statusKey}`} title={statusText} />
+              <span className="top-bar-conn-name">{currentConn.name}</span>
+              <span className="top-bar-conn-meta">
+                {currentConn.user}@{currentConn.host}:{currentConn.port}
+                {currentConn.database ? `/${currentConn.database}` : ''}
+              </span>
+              <span className={`top-bar-conn-state top-bar-conn-state-${statusKey}`}>
+                <StatusIcon size={13} className={statusKey === 'testing' ? 'spin' : ''} />
+                {statusText}
+              </span>
+            </>
+          ) : (
+            <span className="top-bar-conn-empty">未连接</span>
+          )}
         </div>
+        <div className="top-bar-actions">
+          <button className="top-bar-icon-btn" onClick={() => setShowHistory(true)} title="执行历史">
+            <History size={15} />
+          </button>
+          <button className="top-bar-icon-btn" onClick={() => setShowFavorites(true)} title="命名收藏">
+            <Star size={15} />
+          </button>
+          <button className="top-bar-icon-btn" onClick={() => setShowSettings(true)} title="设置">
+            <Settings size={15} />
+          </button>
+        </div>
+      </header>
 
-        {selectedId && (
-          <div className="sidebar-panel panel-explorer">
-            <ObjectExplorer
-              connectionId={selectedId}
-              onPreviewTable={handlePreviewTable}
-              onOpenTable={handleOpenTable}
-              onInsertColumn={handleInsertColumn}
-              onDdlTable={handleDdlTable}
+      {/* 主工作区：资源侧栏 + 中央工作区 */}
+      <div className="app-body">
+        {/* 左侧资源侧栏：连接 + Schema */}
+        <aside className="sidebar">
+          <div className="sidebar-panel panel-connections">
+            <ConnectionManager
+              onSelect={handleSelectConnection}
+              selectedId={selectedId ?? undefined}
+              onConnectionsChange={handleConnectionsChange}
             />
           </div>
-        )}
-        {!selectedId && (
-          <div className="sidebar-hint">
-            <p>请选择一个连接以浏览数据库对象</p>
-          </div>
-        )}
-      </aside>
 
-      {/* 中央工作区 */}
-      <main className="main-area">
-        <EditorTabs
-          tabs={tabs}
-          activeTabId={activeTabId}
-          onSelect={setActiveTab}
-          onClose={handleCloseTab}
-          onNew={newTab}
-          onOpen={() => void handleOpen()}
-          onSave={() => void handleSave()}
-          onSaveAs={() => void handleSaveAs()}
-        />
-        <div className="toolbar-extras">
-          <button className="toolbar-btn" onClick={() => setShowHistory(true)} title="执行历史">
-            <History size={13} /> 历史
-          </button>
-          <button className="toolbar-btn" onClick={() => setShowFavorites(true)} title="命名收藏">
-            <Star size={13} /> 收藏
-          </button>
-          <button className="toolbar-btn" onClick={() => setShowSettings(true)} title="设置">
-            <Settings size={13} /> 设置
-          </button>
-          {activeTab && <ExportMenu />}
-        </div>
-        {activeTab ? (
-          <div className="editor-pane">
-            <SqlEditor
-              ref={sqlEditorRef}
-              tab={activeTab}
-              connectionId={currentConnectionId}
-              isExecuting={
-                executing?.tabId === activeTab.id &&
-                executing.connectionId === currentConnectionId
-              }
-              onSqlChange={(sql) => updateSql(activeTab.id, sql)}
-              onExecute={(sql, db) => void handleExecute(sql, db)}
-              onCancelQuery={handleCancelQuery}
-              onOpenAiSettings={() => setShowAiSettings(true)}
-              onSave={handleSave}
-              aiSettingsVersion={aiSettingsVersion}
-              theme={theme}
-              fontSize={fontSize}
-            />
-            <ResultTabs />
-          </div>
-        ) : (
-          <div className="workspace-placeholder">
-            <Database size={48} strokeWidth={1.2} className="placeholder-icon" />
-            <p>点击「新建」开始编写 SQL 脚本</p>
-            <p className="placeholder-hint">
-              或选择连接后在对象浏览器中双击表生成 SELECT
-            </p>
-          </div>
+          {selectedId && (
+            <div className="sidebar-panel panel-explorer">
+              <ObjectExplorer
+                connectionId={selectedId}
+                onPreviewTable={handlePreviewTable}
+                onOpenTable={handleOpenTable}
+                onInsertColumn={handleInsertColumn}
+                onDdlTable={handleDdlTable}
+              />
+            </div>
+          )}
+          {!selectedId && (
+            <div className="sidebar-hint">
+              <p>请选择一个连接以浏览数据库对象</p>
+            </div>
+          )}
+        </aside>
+
+        {/* 中央工作区 */}
+        <main className="main-area">
+          <EditorTabs
+            tabs={tabs}
+            activeTabId={activeTabId}
+            onSelect={setActiveTab}
+            onClose={handleCloseTab}
+            onNew={newTab}
+            onOpen={() => void handleOpen()}
+            onSave={() => void handleSave()}
+            onSaveAs={() => void handleSaveAs()}
+          />
+          {activeTab && (
+            <div className="toolbar-extras">
+              <ExportMenu />
+            </div>
+          )}
+          {activeTab ? (
+            <div className="editor-pane">
+              <SqlEditor
+                ref={sqlEditorRef}
+                tab={activeTab}
+                connectionId={currentConnectionId}
+                isExecuting={
+                  executing?.tabId === activeTab.id &&
+                  executing.connectionId === currentConnectionId
+                }
+                onSqlChange={(sql) => updateSql(activeTab.id, sql)}
+                onExecute={(sql, db) => void handleExecute(sql, db)}
+                onCancelQuery={handleCancelQuery}
+                onOpenAiSettings={() => setShowAiSettings(true)}
+                onSave={handleSave}
+                aiSettingsVersion={aiSettingsVersion}
+                theme={theme}
+                fontSize={fontSize}
+              />
+              <ResultTabs />
+            </div>
+          ) : (
+            <div className="workspace-placeholder">
+              <Database size={48} strokeWidth={1.2} className="placeholder-icon" />
+              <p>点击「新建」开始编写 SQL 脚本</p>
+              <p className="placeholder-hint">
+                或选择连接后在对象浏览器中双击表生成 SELECT
+              </p>
+            </div>
+          )}
+        </main>
+      </div>
+
+      {/* 底部状态栏：连接 | 数据库 | 查询状态 | 耗时 | 行数 | 截断 */}
+      <footer className="status-bar">
+        <span className="status-item">连接：{currentConn?.name ?? '未连接'}</span>
+        <span className="status-item">数据库：{currentDb ?? '—'}</span>
+        <span className="status-item">状态：{queryStatusText}</span>
+        {execution?.result && !executing && (
+          <>
+            <span className="status-item">耗时：{execution.result.totalElapsedMs} ms</span>
+            <span className="status-item">行数：{totalRows}</span>
+          </>
         )}
-      </main>
+        {execution?.result?.truncated && (
+          <span className="status-item status-warn"><AlertTriangle size={11} /> 结果超出上限已截断（前 5 万行）</span>
+        )}
+      </footer>
+
       <HistoryPanel
         open={showHistory}
         onClose={() => setShowHistory(false)}

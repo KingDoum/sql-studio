@@ -8,6 +8,7 @@
  * 仅组合共享类型 TableMeta/ColumnMeta。
  */
 import { useEffect, useRef, useState } from 'react';
+import { ChevronDown, ChevronRight, Database, Table2, Eye, KeyRound, RefreshCw, PlayCircle } from 'lucide-react';
 import type { ColumnMeta, TableMeta } from '@shared/types';
 
 export interface ObjectExplorerProps {
@@ -128,8 +129,13 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable, onIn
               className={`db-item${expandedDb === dbNode.name ? ' expanded' : ''}`}
               onClick={() => toggleDb(dbNode)}
             >
-              <span className="tree-arrow">{expandedDb === dbNode.name ? '▾' : '▸'}</span>
-              📁 {dbNode.name}
+              <span className="tree-arrow">
+                {expandedDb === dbNode.name
+                  ? <ChevronDown size={14} />
+                  : <ChevronRight size={14} />}
+              </span>
+              <Database size={14} className="db-icon" />
+              <span className="db-name">{dbNode.name}</span>
             </div>
             {expandedDb === dbNode.name && dbNode.tables && (
               <ul className="table-list">
@@ -143,9 +149,12 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable, onIn
                       title={t.comment || t.name}
                     >
                       <span className="tree-arrow">
-                        {expandedTable === `${dbNode.name}.${t.name}` ? '▾' : '▸'}
+                        {expandedTable === `${dbNode.name}.${t.name}`
+                          ? <ChevronDown size={14} />
+                          : <ChevronRight size={14} />}
                       </span>
-                      {t.isView ? '👁' : '🗂'} {t.name}
+                      {t.isView ? <Eye size={14} className="view-icon" /> : <Table2 size={14} className="table-icon" />}
+                      <span className="table-name">{t.name}</span>
                       {onPreviewTable && (
                         <button
                           className="preview"
@@ -153,8 +162,9 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable, onIn
                             e.stopPropagation();
                             onPreviewTable(dbNode.name, t.name);
                           }}
+                          title="数据预览"
                         >
-                          预览
+                          <PlayCircle size={13} /> 预览
                         </button>
                       )}
                     </div>
@@ -167,7 +177,7 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable, onIn
                             title={c.comment || `双击插入 \`${c.name}\``}
                             onDoubleClick={() => onInsertColumn?.(dbNode.name, t.name, c.name)}
                           >
-                            <span className="col-key">{c.isPrimary ? '🔑' : ''}</span>
+                            <span className="col-key">{c.isPrimary ? <KeyRound size={12} /> : null}</span>
                             <span className="col-name">{c.name}</span>
                             <em>{c.type}</em>
                             {c.comment ? <span className="col-comment">{c.comment}</span> : null}
@@ -196,7 +206,7 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable, onIn
                 if (contextMenu) onPreviewTable?.(contextMenu.db, contextMenu.table);
               }}
             >
-              数据预览
+              <PlayCircle size={14} /> 数据预览
             </button>
             <button
               className="context-item"
@@ -214,7 +224,7 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable, onIn
                 if (contextMenu) void loadColumns(contextMenu.db, contextMenu.table);
               }}
             >
-              刷新
+              <RefreshCw size={14} /> 刷新
             </button>
           </div>
         </>

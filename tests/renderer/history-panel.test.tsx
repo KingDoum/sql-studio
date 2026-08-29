@@ -3,7 +3,7 @@
  * HistoryPanel 组件测试（任务 11）。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { HistoryPanel } from '@renderer/components/HistoryPanel';
 import type { HistoryItem } from '@shared/types';
 

@@ -54,15 +54,6 @@ export interface SqlStudioThemeData {
  * 无 schema（未连接）时传空标识符表，只保留关键字高亮。
  */
 export function buildSqlMonarchLanguage(ids: MonacoSchemaIdentifiers): SqlStudioMonarchLanguage {
-  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  // 空表时用永不匹配的正则（避免把 `undefined` 拼进表达式）
-  const alt = (arr: string[]) =>
-    arr.length ? `(?:${arr.map(esc).join('|')})` : '(?!x)x';
-
-  const tablePattern = alt(ids.tables);
-  const columnPattern = alt(ids.columns);
-  const dbPattern = alt(ids.databases);
-
   return {
     defaultToken: '',
     tokenPostfix: '.sql',

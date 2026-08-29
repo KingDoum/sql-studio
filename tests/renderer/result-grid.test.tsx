@@ -4,7 +4,7 @@
  * 覆盖：空结果、排序、筛选、虚拟滚动数量、复制、NULL 展示。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { ResultGrid } from '@renderer/components/ResultGrid';
 import type { CellValue, ColumnMeta } from '@shared/types';
 
@@ -62,8 +62,6 @@ describe('ResultGrid', () => {
     const idHeader = screen.getByText('id');
     fireEvent.click(idHeader);
     // 排序后首行应是 id=1
-    const cells = screen.getAllByText(/^[A-Za-z]/);
-    // 取第一行非 null 的 name 值
     expect(screen.getByText('Alice')).toBeTruthy();
     fireEvent.click(idHeader);
     fireEvent.click(idHeader); // 切到 none

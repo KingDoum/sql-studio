@@ -98,7 +98,7 @@ export function ConnectionManager({ onSelect, selectedId, onConnectionsChange }:
     }
   };
 
-  /** 打开编辑表单：connections:get 取详情回填（连接摘要不含密码，密码留空 = 保留旧密码）。 */
+  /** 打开编辑表单：用连接摘要回填（不含密码，密码留空 = 保留旧密码）。 */
   const handleEdit = async (c: ConnectionSummary) => {
     setMenuFor(null);
     setShowForm(false);

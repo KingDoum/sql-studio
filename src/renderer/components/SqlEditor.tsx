@@ -12,12 +12,12 @@
  * 测试策略：@monaco-editor/react 在 jsdom 中无法完整加载，
  * 本组件在测试中通过 vi.mock 替换为 stub textarea（纯逻辑测试在 sql-utils / sql-completion / monaco-language 中覆盖）。
  */
-import React, { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import Editor, { type BeforeMount, type OnMount } from '@monaco-editor/react';
 import { format } from 'sql-formatter';
 import { Brain, FolderOpen, Play, Square } from 'lucide-react';
 import type { ColumnMeta, EditorTab, TableMeta, ThemeMode } from '@shared/types';
-import { getCurrentStatement, splitStatements } from '@renderer/lib/sql-utils';
+import { getCurrentStatement } from '@renderer/lib/sql-utils';
 import {
   SchemaCompletionProvider,
   type SchemaSnapshot,

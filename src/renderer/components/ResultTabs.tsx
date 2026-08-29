@@ -128,9 +128,9 @@ export function ResultTabs() {
               {execution.result.resultSets.reduce((n, rs) => n + rs.rows.length, 0)} 行
             </span>
             {execution.result.truncated && (
-              <span className="status-warn">⚠ 结果超出上限已截断（仅显示前 5 万行）</span>
+              <span className="status-warn"><AlertTriangle size={11} /> 结果超出上限已截断（仅显示前 5 万行）</span>
             )}
-            {execution.result.hasWrite && <span className="status-warn">⚠ 包含写操作</span>}
+            {execution.result.hasWrite && <span className="status-warn"><AlertTriangle size={11} /> 包含写操作</span>}
           </div>
         </>
       )}

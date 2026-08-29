@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'react';
 import { Sun, Moon, Bug, Copy, Check, Trash2 } from 'lucide-react';
 import type { ThemeMode } from '@shared/types';
-import { getDebugLogEntries, formatDebugLogText, ensureDebugLogging, clearDebugLogs, type DebugLogEntry } from '@renderer/lib/debug-log';
+import { getDebugLogEntries, formatDebugLogText, clearDebugLogs, type DebugLogEntry } from '@renderer/lib/debug-log';
 import { Modal } from './Modal';
 
 export interface SettingsPanelProps {

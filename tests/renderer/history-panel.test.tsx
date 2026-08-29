@@ -19,6 +19,7 @@ describe('HistoryPanel', () => {
       'history:remove': vi.fn(async () => ({ removed: true })),
     };
     vi.spyOn(window, 'prompt').mockReturnValue('my favorite');
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
   });
   afterEach(() => vi.restoreAllMocks());
 

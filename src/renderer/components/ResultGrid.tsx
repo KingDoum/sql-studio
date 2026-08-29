@@ -15,6 +15,7 @@
  *   └──────────────┘   ← 状态栏（行数/排序提示）
  */
 import { useMemo, useRef, useState, useCallback } from 'react';
+import { ArrowDown, ArrowUp } from 'lucide-react';
 import type { CellValue, ColumnMeta } from '@shared/types';
 import { compareCell, formatCell, matchesFilter } from '@renderer/lib/cell-format';
 
@@ -168,7 +169,9 @@ export function ResultGrid({ columns, rows, showFilter = true }: ResultGridProps
             <span className="grid-col-name">{c.name}</span>
             <span className="grid-col-meta">{c.type}</span>
             {sortCol === ci && sortDir !== 'none' && (
-              <span className="grid-sort-icon">{sortDir === 'asc' ? '▲' : '▼'}</span>
+              <span className="grid-sort-icon">
+                {sortDir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />}
+              </span>
             )}
             <span
               className="grid-resize-handle"
@@ -188,6 +191,7 @@ export function ResultGrid({ columns, rows, showFilter = true }: ResultGridProps
               key={`f-${c.name}`}
               className="grid-filter-input"
               placeholder="筛选…"
+              aria-label={`筛选 ${c.name}`}
               value={filters[ci] ?? ''}
               onChange={(e) => setFilters((f) => ({ ...f, [ci]: e.target.value }))}
             />
@@ -228,7 +232,7 @@ export function ResultGrid({ columns, rows, showFilter = true }: ResultGridProps
       <div className="grid-footer">
         {visibleRows.length !== rows.length && `${rows.length - visibleRows.length} 行被筛选隐藏 · `}
         显示 {visibleRows.length} 行
-        {sortDir !== 'none' && sortCol !== null && ` · 按 ${columns[sortCol].name} ${sortDir === 'asc' ? '↑' : '↓'}`}
+        {sortDir !== 'none' && sortCol !== null && ` · 按 ${columns[sortCol].name} ${sortDir === 'asc' ? '升序' : '降序'}`}
       </div>
     </div>
   );

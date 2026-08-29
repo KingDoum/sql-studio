@@ -14,8 +14,8 @@ import { Plus, MoreHorizontal, Pencil, Plug, Trash2, Server } from 'lucide-react
 import type { ConnectionInput, ConnectionSummary } from '@shared/types';
 import { ConnectionForm } from './ConnectionForm';
 
-/** 连接状态（顶部应用栏/状态栏展示用）。 */
-export type ConnStatus = 'testing' | 'ok' | 'error';
+/** 连接状态（顶部应用栏/状态栏展示用）。unknown = 尚未测试。 */
+export type ConnStatus = 'testing' | 'ok' | 'error' | 'unknown';
 
 export interface ConnectionManagerProps {
   onSelect: (id: string | null) => void;
@@ -105,7 +105,14 @@ export function ConnectionManager({ onSelect, selectedId, onConnectionsChange }:
     setEditing(c);
   };
 
-  if (loading) return <div className="conn-manager">加载中…</div>;
+  if (loading) {
+    return (
+      <div className="conn-manager conn-manager-loading">
+        <span className="conn-loading-spinner" aria-hidden="true" />
+        <span>加载连接…</span>
+      </div>
+    );
+  }
 
   return (
     <div className="conn-manager">
@@ -181,38 +188,48 @@ export function ConnectionManager({ onSelect, selectedId, onConnectionsChange }:
                 </button>
               </div>
               {menuFor === c.id && (
-                <div className="conn-menu">
-                  <button
-                    className="conn-menu-item"
+                <>
+                  {/* 透明遮罩：点击外部关闭更多菜单 */}
+                  <div
+                    className="conn-menu-backdrop"
                     onClick={(e) => {
                       e.stopPropagation();
                       setMenuFor(null);
-                      void handleEdit(c);
                     }}
-                  >
-                    <Pencil size={13} /> 编辑
-                  </button>
-                  <button
-                    className="conn-menu-item"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setMenuFor(null);
-                      void testConnection(c.id);
-                    }}
-                  >
-                    <Plug size={13} /> 测试连接
-                  </button>
-                  <button
-                    className="conn-menu-item danger"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setMenuFor(null);
-                      void handleRemove(c.id);
-                    }}
-                  >
-                    <Trash2 size={13} /> 删除
-                  </button>
-                </div>
+                  />
+                  <div className="conn-menu">
+                    <button
+                      className="conn-menu-item"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMenuFor(null);
+                        void handleEdit(c);
+                      }}
+                    >
+                      <Pencil size={13} /> 编辑
+                    </button>
+                    <button
+                      className="conn-menu-item"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMenuFor(null);
+                        void testConnection(c.id);
+                      }}
+                    >
+                      <Plug size={13} /> 测试连接
+                    </button>
+                    <button
+                      className="conn-menu-item danger"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMenuFor(null);
+                        void handleRemove(c.id);
+                      }}
+                    >
+                      <Trash2 size={13} /> 删除
+                    </button>
+                  </div>
+                </>
               )}
             </li>
           );

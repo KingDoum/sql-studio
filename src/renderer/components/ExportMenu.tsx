@@ -11,12 +11,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { Download } from 'lucide-react';
 import { useWorkspace } from '@renderer/store/workspace';
-import type { ExportExcelRequest, ExportInsertRequest, ExportCsvRequest } from '@shared/types';
+import type { ExportExcelRequest, ExportInsertRequest, ExportCsvRequest, QueryResultSet } from '@shared/types';
 import { Modal } from './Modal';
 
 const LAST_EXPORT_DIR_KEY = 'lastExportDir';
 
-export function ExportMenu() {
+export interface ExportMenuProps {
+  /** 指定要导出的结果集；缺省时取 workspace 活跃执行的第 0 个结果集。 */
+  resultSet?: QueryResultSet;
+}
+
+export function ExportMenu({ resultSet }: ExportMenuProps) {
   const execution = useWorkspace((s) => s.execution);
   const [open, setOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -24,8 +29,8 @@ export function ExportMenu() {
   const [tableName, setTableName] = useState('');
   const menuRef = useRef<HTMLDivElement | null>(null);
 
-  const resultSet = execution?.result?.resultSets[0];
-  const canExport = !!resultSet && resultSet.rows.length > 0;
+  const activeSet = resultSet ?? execution?.result?.resultSets[0];
+  const canExport = !!activeSet && activeSet.rows.length > 0;
 
   // 读取上一次导出目录（持久化：settings 表）
   useEffect(() => {
@@ -72,7 +77,7 @@ export function ExportMenu() {
   };
 
   const exportExcel = async () => {
-    if (!resultSet) return;
+    if (!activeSet) return;
     let filePath: string | null = null;
     try {
       filePath = await pickSavePath('导出 Excel', '导出结果.xlsx', [
@@ -86,8 +91,8 @@ export function ExportMenu() {
     try {
       const req: ExportExcelRequest = {
         options: { filePath: filePath.endsWith('.xlsx') ? filePath : `${filePath}.xlsx` },
-        columns: resultSet.columns,
-        rows: resultSet.rows,
+        columns: activeSet.columns,
+        rows: activeSet.rows,
       };
       await window.sqlStudio['export:excel'](req);
       onExportSuccess(req.options.filePath);
@@ -100,7 +105,7 @@ export function ExportMenu() {
   };
 
   const exportCsv = async () => {
-    if (!resultSet) return;
+    if (!activeSet) return;
     let filePath: string | null = null;
     try {
       filePath = await pickSavePath('导出 CSV', '导出结果.csv', [
@@ -114,8 +119,8 @@ export function ExportMenu() {
     try {
       const req: ExportCsvRequest = {
         options: { filePath: filePath.endsWith('.csv') ? filePath : `${filePath}.csv` },
-        columns: resultSet.columns,
-        rows: resultSet.rows,
+        columns: activeSet.columns,
+        rows: activeSet.rows,
       };
       await window.sqlStudio['export:csv'](req);
       onExportSuccess(req.options.filePath);
@@ -128,13 +133,13 @@ export function ExportMenu() {
   };
 
   const exportInsert = async () => {
-    if (!resultSet) return;
+    if (!activeSet) return;
     setPendingInsert(true);
     close();
   };
 
   const doExportInsert = async () => {
-    if (!resultSet || !tableName.trim()) return;
+    if (!activeSet || !tableName.trim()) return;
     setExporting(true);
     setPendingInsert(false);
     try {
@@ -144,8 +149,8 @@ export function ExportMenu() {
       if (!filePath) return; // 取消保存对话框：finally 统一复位
       const req: ExportInsertRequest = {
         options: { filePath, tableName: tableName.trim() },
-        columns: resultSet.columns,
-        rows: resultSet.rows,
+        columns: activeSet.columns,
+        rows: activeSet.rows,
       };
       await window.sqlStudio['export:insert'](req);
       onExportSuccess(filePath);
@@ -168,7 +173,7 @@ export function ExportMenu() {
         <Download size={13} />
         <span>{exporting ? '导出中…' : '导出'}</span>
       </button>
-      {open && resultSet && (
+      {open && activeSet && (
         <>
           <div className="export-backdrop" onClick={close} />
           <div className="export-dropdown">
@@ -176,12 +181,12 @@ export function ExportMenu() {
               className="export-item"
               disabled={exporting}
               onClick={() => void exportExcel()}
-              title={resultSet.rows.length > 10000 ? '数据量较大（' + resultSet.rows.length.toLocaleString() + ' 行），导出可能需要一些时间，请勿重复点击' : undefined}
+              title={activeSet.rows.length > 10000 ? '数据量较大（' + activeSet.rows.length.toLocaleString() + ' 行），导出可能需要一些时间，请勿重复点击' : undefined}
             >
               导出 Excel（全量）
-              {resultSet.rows.length > 10000 && (
+              {activeSet.rows.length > 10000 && (
                 <span className="export-item-hint">
-                  {resultSet.rows.length.toLocaleString()} 行
+                  {activeSet.rows.length.toLocaleString()} 行
                 </span>
               )}
             </button>

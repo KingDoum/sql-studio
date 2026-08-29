@@ -74,6 +74,7 @@ export function FavoritesPanel({ open, onClose, onOpen }: FavoritesPanelProps) {
         <input
           className="history-search"
           placeholder="搜索收藏名 / 标签…"
+          aria-label="搜索收藏"
           value={keyword}
           autoFocus
           onChange={(e) => setKeyword(e.target.value)}
@@ -100,6 +101,7 @@ export function FavoritesPanel({ open, onClose, onOpen }: FavoritesPanelProps) {
                     className="rename-input"
                     value={renameValue}
                     autoFocus
+                    aria-label="重命名收藏"
                     onChange={(e) => setRenameValue(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') void confirmRename(fav.name);
@@ -132,6 +134,7 @@ export function FavoritesPanel({ open, onClose, onOpen }: FavoritesPanelProps) {
                 className="favorite-act del"
                 title="删除"
                 onClick={async () => {
+                  if (!window.confirm(`确定删除收藏「${fav.name}」？`)) return;
                   try {
                     await window.sqlStudio['favorites:remove']({ name: fav.name });
                     setItems((prev) => prev.filter((f) => f.name !== fav.name));

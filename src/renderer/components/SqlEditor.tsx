@@ -368,13 +368,7 @@ const beforeMount: BeforeMount = useCallback((monaco) => {
     };
     // 聚焦
     editor.focus();
-    // 主动触发 AI 注册（onMount 时 Monaco 就绪，确保 AI provider 不丢失）
-    if (aiState.enabled) {
-      try {
-        const disposable = monaco.languages.registerInlineCompletionsProvider('sql', aiProviderRef.current!);
-        return () => { disposable.dispose(); };
-      } catch {}
-    }
+    // AI provider 由 [aiState] effect 统一注册/清理，不在 onMount 重复注册（避免泄漏）
   }, []);
 
   // 暴露 insertTextAtCursor 给父组件（体验优化：双击字段插入）

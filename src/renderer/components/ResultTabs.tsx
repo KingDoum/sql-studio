@@ -29,6 +29,11 @@ export function ResultTabs() {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{ startY: number; startH: number } | null>(null);
 
+  // 结果集数变化时钳制 activeSet，避免指向不存在的结果集（多结果集→单结果集回归）
+  const safeSet = execution?.result
+    ? Math.min(activeSet, execution.result.resultSets.length - 1)
+    : 0;
+
   const onResizeStart = (e: React.PointerEvent) => {
     e.preventDefault();
     const el = panelRef.current;
@@ -88,7 +93,7 @@ export function ResultTabs() {
                 {execution.result.resultSets.map((rs, i) => (
                   <button
                     key={rs.index}
-                    className={`result-tab${i === activeSet ? ' active' : ''}`}
+                    className={`result-tab${i === safeSet ? ' active' : ''}`}
                     onClick={() => setActiveSet(i)}
                   >
                     结果 {i + 1}
@@ -111,13 +116,13 @@ export function ResultTabs() {
                 {showFilter ? <FilterX size={13} /> : <Filter size={13} />}
                 <span>筛选</span>
               </button>
-              <ExportMenu />
+              <ExportMenu resultSet={execution.result.resultSets[safeSet]} />
             </div>
           </div>
           <div className="result-grid-host">
             <ResultGrid
-              columns={execution.result.resultSets[activeSet]?.columns ?? []}
-              rows={execution.result.resultSets[activeSet]?.rows ?? []}
+              columns={execution.result.resultSets[safeSet]?.columns ?? []}
+              rows={execution.result.resultSets[safeSet]?.rows ?? []}
               showFilter={showFilter}
             />
           </div>

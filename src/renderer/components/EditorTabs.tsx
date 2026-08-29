@@ -6,7 +6,7 @@
  * 纯展示组件：数据与动作由父级（App + workspace store）注入，
  * 便于单测（mock 回调 / window.confirm）。
  */
-import { Plus, FilePlus2, FolderOpen, Save } from 'lucide-react';
+import { Plus, FilePlus2, FolderOpen, Save, X } from 'lucide-react';
 import type { EditorTab } from '@shared/types';
 
 export interface EditorTabsProps {
@@ -78,7 +78,7 @@ export function EditorTabs({
                 handleClose(tab);
               }}
             >
-              ×
+              <X size={12} />
             </button>
           </div>
         ))}

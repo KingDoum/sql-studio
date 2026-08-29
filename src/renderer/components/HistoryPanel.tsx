@@ -50,6 +50,7 @@ export function HistoryPanel({ open, onClose, onBackfillSql, onSaveAsFavorite }:
         <input
           className="history-search"
           placeholder="搜索 SQL / 连接名…"
+          aria-label="搜索历史记录"
           value={keyword}
           autoFocus
           onChange={(e) => setKeyword(e.target.value)}
@@ -92,6 +93,7 @@ export function HistoryPanel({ open, onClose, onBackfillSql, onSaveAsFavorite }:
                 className="history-action del"
                 title="删除"
                 onClick={async () => {
+                  if (!window.confirm('确定删除这条历史记录？')) return;
                   try {
                     await window.sqlStudio['history:remove']({ id: h.id });
                     setItems((prev) => prev.filter((x) => x.id !== h.id));

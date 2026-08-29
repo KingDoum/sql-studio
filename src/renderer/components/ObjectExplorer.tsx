@@ -8,7 +8,7 @@
  * 仅组合共享类型 TableMeta/ColumnMeta。
  */
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, Database, Table2, Eye, KeyRound, RefreshCw, PlayCircle } from 'lucide-react';
+import { ChevronDown, ChevronRight, Database, Table2, Eye, KeyRound, RefreshCw, PlayCircle, AlertTriangle } from 'lucide-react';
 import type { ColumnMeta, TableMeta } from '@shared/types';
 
 export interface ObjectExplorerProps {
@@ -23,9 +23,9 @@ export interface ObjectExplorerProps {
 }
 
 /** 表节点：共享类型 TableMeta + 懒加载的字段列表（columns 不在 TableMeta 内，避免污染唯一来源）。 */
-type TableNode = TableMeta & { columns?: ColumnMeta[] };
+type TableNode = TableMeta & { columns?: ColumnMeta[]; loadError?: string };
 /** 库节点：库名 + 懒加载的表列表。 */
-type DbNode = { name: string; tables?: TableNode[] };
+type DbNode = { name: string; tables?: TableNode[]; loadError?: string };
 
 export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable, onInsertColumn, onDdlTable }: ObjectExplorerProps) {
   const [databases, setDatabases] = useState<DbNode[]>([]);
@@ -37,24 +37,28 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable, onIn
   /** 右键菜单状态。 */
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; db: string; table: string } | null>(null);
 
-  useEffect(() => {
+  /** 加载数据库列表（可重试：初始加载与错误重试共用）。 */
+  const loadDatabases = async () => {
     const reqId = ++requestIdRef.current;
     setLoading(true);
     setError(null);
     setExpandedDb(null);
     setExpandedTable(null);
-    window.sqlStudio['schema:databases']({ connectionId })
-      .then((names) => {
-        if (reqId !== requestIdRef.current) return;
-        setDatabases(names.map((name) => ({ name })));
-      })
-      .catch((err: unknown) => {
-        if (reqId !== requestIdRef.current) return;
-        setError(err instanceof Error ? err.message : '加载库失败');
-      })
-      .finally(() => {
-        if (reqId === requestIdRef.current) setLoading(false);
-      });
+    try {
+      const names = await window.sqlStudio['schema:databases']({ connectionId });
+      if (reqId !== requestIdRef.current) return;
+      setDatabases(names.map((name) => ({ name })));
+    } catch (err) {
+      if (reqId !== requestIdRef.current) return;
+      setError(err instanceof Error ? err.message : '加载库失败');
+    } finally {
+      if (reqId === requestIdRef.current) setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadDatabases();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connectionId]);
 
   const loadTables = async (db: string) => {
@@ -62,10 +66,13 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable, onIn
     try {
       const tables = await window.sqlStudio['schema:tables']({ connectionId, database: db });
       if (reqId !== requestIdRef.current) return;
-      setDatabases((dbs) => dbs.map((d) => (d.name === db ? { ...d, tables } : d)));
+      setDatabases((dbs) => dbs.map((d) => (d.name === db ? { ...d, tables, loadError: undefined } : d)));
     } catch (err) {
       if (reqId !== requestIdRef.current) return;
-      setError(err instanceof Error ? err.message : `加载表失败：${db}`);
+      // 子级加载失败只标记该库，不覆盖已加载的整棵树
+      setDatabases((dbs) =>
+        dbs.map((d) => (d.name === db ? { ...d, loadError: err instanceof Error ? err.message : `加载表失败：${db}` } : d)),
+      );
     }
   };
 
@@ -83,13 +90,22 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable, onIn
           if (d.name !== db || !d.tables) return d;
           return {
             ...d,
-            tables: d.tables.map((t) => (t.name === table ? { ...t, columns } : t)),
+            tables: d.tables.map((t) => (t.name === table ? { ...t, columns, loadError: undefined } : t)),
           };
         }),
       );
     } catch (err) {
       if (reqId !== requestIdRef.current) return;
-      setError(err instanceof Error ? err.message : `加载字段失败：${db}.${table}`);
+      // 子级加载失败只标记该表，不覆盖整棵树
+      setDatabases((dbs) =>
+        dbs.map((d) => {
+          if (d.name !== db || !d.tables) return d;
+          return {
+            ...d,
+            tables: d.tables.map((t) => (t.name === table ? { ...t, loadError: err instanceof Error ? err.message : `加载字段失败：${db}.${table}` } : t)),
+          };
+        }),
+      );
     }
   };
 
@@ -114,7 +130,16 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable, onIn
 
   const closeContextMenu = () => setContextMenu(null);
 
-  if (error) return <div className="explorer error">{error}</div>;
+  if (error) {
+    return (
+      <div className="explorer error">
+        <span>{error}</span>
+        <button className="explorer-retry" onClick={() => void loadDatabases()} title="重新加载">
+          <RefreshCw size={13} /> 重试
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="explorer">
@@ -137,6 +162,14 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable, onIn
               <Database size={14} className="db-icon" />
               <span className="db-name">{dbNode.name}</span>
             </div>
+            {dbNode.loadError && (
+              <div className="explorer-node-error" title={dbNode.loadError}>
+                <AlertTriangle size={11} /> {dbNode.loadError}
+                <button className="explorer-node-retry" onClick={(e) => { e.stopPropagation(); void loadTables(dbNode.name); }}>
+                  <RefreshCw size={11} /> 重试
+                </button>
+              </div>
+            )}
             {expandedDb === dbNode.name && dbNode.tables && (
               <ul className="table-list">
                 {dbNode.tables.map((t) => (
@@ -168,6 +201,14 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable, onIn
                         </button>
                       )}
                     </div>
+                    {t.loadError && (
+                      <div className="explorer-node-error" title={t.loadError}>
+                        <AlertTriangle size={11} /> {t.loadError}
+                        <button className="explorer-node-retry" onClick={(e) => { e.stopPropagation(); void loadColumns(dbNode.name, t.name); }}>
+                          <RefreshCw size={11} /> 重试
+                        </button>
+                      </div>
+                    )}
                     {expandedTable === `${dbNode.name}.${t.name}` && t.columns && (
                       <ul className="col-list">
                         {t.columns.map((c) => (

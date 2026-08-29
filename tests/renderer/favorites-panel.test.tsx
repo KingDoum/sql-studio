@@ -20,6 +20,7 @@ describe('FavoritesPanel', () => {
       'favorites:open': vi.fn(async () => ({ filePath: '/queries/x.sql', content: 'SELECT 1' })),
       'favorites:rename': vi.fn(async () => MOCK_FAVS[0]),
     };
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
   });
   afterEach(() => vi.restoreAllMocks());
 

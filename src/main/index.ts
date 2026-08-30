@@ -13,6 +13,11 @@ import { Security } from './services/security';
 import { MetadataStore } from './services/metadata-store';
 import { ConnectionManager, type Mysql2Factory } from './services/connection-manager';
 import { FavoritesStore } from './services/favorites-store';
+import { ScriptStore } from './services/script-store';
+import { ExcelExporter } from './services/excel-exporter';
+import { SqlExporter } from './services/sql-exporter';
+import { CsvExporter } from './services/csv-exporter';
+import { AiService } from './services/ai-service';
 import { registerIpc } from './ipc';
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
@@ -71,12 +76,24 @@ app.whenReady().then(() => {
   connectionManager = new ConnectionManager(mysqlFactory);
   const favoritesStore = new FavoritesStore(path.join(userDataPath, 'queries'));
 
+  // 无状态服务统一在此创建，避免 IPC handler 内每次调用重复 new
+  const scriptStore = new ScriptStore();
+  const excelExporter = new ExcelExporter();
+  const sqlExporter = new SqlExporter();
+  const csvExporter = new CsvExporter();
+  const aiService = new AiService();
+
   // 2. 注册全部 IPC handler
   registerIpc(
     {
       connectionManager,
       metadataStore,
       favoritesStore,
+      scriptStore,
+      excelExporter,
+      sqlExporter,
+      csvExporter,
+      aiService,
     },
     ipcMain,
   );

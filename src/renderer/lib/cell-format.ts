@@ -8,6 +8,7 @@
  * - MAX 常量：与主进程 MAX_RESULT_ROWS 对齐的展示提示。
  */
 import type { CellValue } from '@shared/types';
+import { classifyStatement, classifyStatements } from '@shared/sql-classify';
 
 /** 单元格 → 展示字符串。 */
 /** ISO 日期时间正则（匹配 YYYY-MM-DDTHH:mm:ss 或 YYYY-MM-DD HH:mm:ss 格式）。 */
@@ -67,16 +68,14 @@ export function matchesFilter(
   return formatCell(value).toLowerCase().includes(kw);
 }
 
-/** 单条语句是否为写入类（执行前 UI 二次确认用）。 */
+/** 单条语句是否为写入类或无法确定的高风险（执行前 UI 二次确认用）。 */
 export function isWriteStatement(stmt: string): boolean {
-  return /^\s*(insert|update|delete|drop|alter|create|truncate|rename|replace|call)\b/i.test(
-    stmt,
-  );
+  return classifyStatement(stmt) !== 'read';
 }
 
-/** 一次执行（可能多语句）是否含写入类。 */
+/** 一次执行（可能多语句）是否含写入类或高风险（需确认）。 */
 export function hasWriteStatements(statements: string[]): boolean {
-  return statements.some(isWriteStatement);
+  return classifyStatements(statements) !== 'read';
 }
 
 /** 与主进程对齐的行数上限（展示提示用）。 */

@@ -160,6 +160,26 @@ describe('registerIpc', () => {
     expect(res.error).toContain('语法错误');
   });
 
+  it('S5：执行中取消（AbortError）不写入历史', async () => {
+    const conn = metadataStore.saveConnection({ name: 'c1', host: 'h', port: 3306, user: 'u', password: 'p', charset: 'utf8mb4' });
+    const fakeCm = deps.connectionManager as unknown as { executeMany: (c: unknown, sql: string, signal?: AbortSignal) => Promise<RawResultSet[]> };
+    fakeCm.executeMany = (_c, _sql, signal) =>
+      new Promise((_resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(new DOMException('已取消', 'AbortError')), { once: true });
+      });
+    const fn = handlers.get('query:execute')!;
+    const cancelFn = handlers.get('query:cancel')!;
+    const pending = fn(null, { connectionId: conn.id, sql: 'SELECT SLEEP(10)', clientQueryId: 'q-cancel-hist' });
+    const cancelRes = (await cancelFn(null, { connectionId: conn.id, queryId: 'q-cancel-hist' })) as { ok: true; data: { cancelled: boolean } };
+    expect(cancelRes.data.cancelled).toBe(true);
+    const res = (await pending) as { ok: false; error: string };
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain('已取消');
+    // 取消的查询不得写入历史
+    const hist = (await (handlers.get('history:list')!(null, undefined) as Promise<unknown>)) as { ok: true; data: unknown[] };
+    expect(hist.data).toHaveLength(0);
+  });
+
   it('favorites:save / list 走文件库', async () => {
     const saveFn = handlers.get('favorites:save')!;
     const res = (await saveFn(null, { name: 'q1', sql: 'SELECT 1' })) as { ok: true; data: { name: string } };

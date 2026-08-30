@@ -103,3 +103,140 @@ describe('SqlExporter.export', () => {
     expect(out.content).toContain("(1, 'O\\'Brien\\\\n')");
   });
 });
+
+describe('标识符转义（S2）', () => {
+  it('表名含反引号被转义，不破坏 SQL 结构', () => {
+    const { writer, out } = captureWriter();
+    const exporter = new SqlExporter(writer);
+    exporter.export({
+      options: { filePath: 'x.sql', tableName: 'we`ird' },
+      columns,
+      rows: [[1, 'a']],
+    });
+    expect(out.content).toContain('INSERT INTO `we``ird` (`id`, `name`) VALUES');
+    // 转义后的标识符内部反引号成对出现，不得产生未配对的闭合逃逸
+    const m = out.content!.match(/INSERT INTO (.+?) \(/);
+    expect(m?.[1]).toBe('`we``ird`');
+  });
+
+  it('列名含反引号被转义', () => {
+    const { writer, out } = captureWriter();
+    const exporter = new SqlExporter(writer);
+    const cols: ColumnMeta[] = [
+      { name: 'a`b', type: 'int', nullable: false, isPrimary: false, isUnique: false },
+    ];
+    exporter.export({
+      options: { filePath: 'x.sql', tableName: 't' },
+      columns: cols,
+      rows: [[1]],
+    });
+    expect(out.content).toContain('(`a``b`)');
+  });
+
+  it('database.table 前缀按两段标识符转义', () => {
+    const { writer, out } = captureWriter();
+    const exporter = new SqlExporter(writer);
+    exporter.export({
+      options: { filePath: 'x.sql', tableName: 'mydb.users' },
+      columns,
+      rows: [[1, 'a']],
+    });
+    expect(out.content).toContain('INSERT INTO `mydb`.`users` (`id`, `name`) VALUES');
+  });
+
+  it('恶意输入被拒绝（禁止把 SQL 片段当标识符拼接）', () => {
+    const { writer } = captureWriter();
+    const exporter = new SqlExporter(writer);
+    // 分号/注释等结构字符直接抛错，而不是产出可执行片段
+    expect(() =>
+      exporter.export({
+        options: { filePath: 'x.sql', tableName: 'users; DROP TABLE x; --' },
+        columns,
+        rows: [[1, 'a']],
+      }),
+    ).toThrow(/非法字符|无效表名/);
+  });
+
+  it('空表名抛错', () => {
+    const { writer } = captureWriter();
+    const exporter = new SqlExporter(writer);
+    expect(() =>
+      exporter.export({
+        options: { filePath: 'x.sql', tableName: '   ' },
+        columns,
+        rows: [[1, 'a']],
+      }),
+    ).toThrow();
+  });
+});
+
+describe('batchSize 校验（S2）', () => {
+  it('batchSize=0 抛错（避免死循环）', () => {
+    const { writer } = captureWriter();
+    const exporter = new SqlExporter(writer);
+    expect(() =>
+      exporter.export({
+        options: { filePath: 'x.sql', tableName: 't', batchSize: 0 },
+        columns,
+        rows: [[1, 'a']],
+      }),
+    ).toThrow();
+  });
+
+  it('batchSize 负数抛错', () => {
+    const { writer } = captureWriter();
+    const exporter = new SqlExporter(writer);
+    expect(() =>
+      exporter.export({
+        options: { filePath: 'x.sql', tableName: 't', batchSize: -5 },
+        columns,
+        rows: [[1, 'a']],
+      }),
+    ).toThrow();
+  });
+
+  it('batchSize 非整数抛错', () => {
+    const { writer } = captureWriter();
+    const exporter = new SqlExporter(writer);
+    expect(() =>
+      exporter.export({
+        options: { filePath: 'x.sql', tableName: 't', batchSize: 2.5 },
+        columns,
+        rows: [[1, 'a']],
+      }),
+    ).toThrow();
+  });
+
+  it('大批量行不会死循环且行数正确', () => {
+    const { writer, out } = captureWriter();
+    const exporter = new SqlExporter(writer);
+    const rows = Array.from({ length: 1000 }, (_, i) => [i, `v${i}`]);
+    const n = exporter.export({
+      options: { filePath: 'x.sql', tableName: 't', batchSize: 250 },
+      columns,
+      rows,
+    });
+    expect(n).toBe(1000);
+    expect((out.content!.match(/INSERT INTO/g) ?? []).length).toBe(4);
+  });
+});
+
+describe('值边界（S2 补齐）', () => {
+  it('NUL、回车、换行、反斜杠、单引号全部转义', () => {
+    expect(escapeSqlValue('a\0b')).toBe("'a\\0b'");
+    expect(escapeSqlValue('a\rb')).toBe("'a\\rb'");
+    expect(escapeSqlValue('a\nb')).toBe("'a\\nb'");
+    expect(escapeSqlValue("it's \\ fine")).toBe("'it\\'s \\\\ fine'");
+  });
+
+  it('显式 columns 覆盖结果集列名', () => {
+    const { writer, out } = captureWriter();
+    const exporter = new SqlExporter(writer);
+    exporter.export({
+      options: { filePath: 'x.sql', tableName: 't', columns: ['c1', 'c2'] },
+      columns,
+      rows: [[1, 'a']],
+    });
+    expect(out.content).toContain('(`c1`, `c2`)');
+  });
+});

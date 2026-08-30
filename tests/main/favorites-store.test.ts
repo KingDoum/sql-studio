@@ -134,3 +134,93 @@ describe('重命名', () => {
     expect(() => store.renameFavorite('不存在', '新名')).toThrow('不存在');
   });
 });
+
+describe('定位规则统一（S1）', () => {
+  it('readFavorite 支持 meta.name 回扫（旧格式文件头与文件名不一致）', () => {
+    fs.writeFileSync(path.join(tmpDir, 'history.sql'), '-- name: 历史查询\n\nSELECT 1', 'utf-8');
+    const res = store.readFavorite('历史查询');
+    expect(res.filePath).toBe(path.join(tmpDir, 'history.sql'));
+  });
+
+  it('readFavorite 精确文件名优先于 meta.name 回扫', () => {
+    fs.writeFileSync(path.join(tmpDir, 'a.sql'), '-- name: b\n\nSELECT 1', 'utf-8');
+    fs.writeFileSync(path.join(tmpDir, 'b.sql'), '-- name: x\n\nSELECT 2', 'utf-8');
+    const res = store.readFavorite('b');
+    expect(res.filePath).toBe(path.join(tmpDir, 'b.sql'));
+  });
+
+  it('removeFavorite 通过 meta.name 回扫删除旧格式', () => {
+    fs.writeFileSync(path.join(tmpDir, 'legacy.sql'), '-- name: 旧收藏\n\nSELECT 1', 'utf-8');
+    expect(store.removeFavorite('旧收藏')).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, 'legacy.sql'))).toBe(false);
+  });
+
+  it('renameFavorite 目标与已有收藏逻辑重名（meta.name）时报错且不破坏源', () => {
+    store.saveFavorite({ name: '甲', sql: 'SELECT 1' });
+    fs.writeFileSync(path.join(tmpDir, 'other.sql'), '-- name: 乙\n\nSELECT 2', 'utf-8');
+    expect(() => store.renameFavorite('甲', '乙')).toThrow('已存在');
+    expect(fs.existsSync(path.join(tmpDir, '甲.sql'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, 'other.sql'))).toBe(true);
+    expect(store.listFavorites().some((f) => f.name === '甲')).toBe(true);
+  });
+});
+
+describe('名称边界安全（S1）', () => {
+  it('保存路径分隔符/绝对路径不会越出收藏目录', () => {
+    const item = store.saveFavorite({ name: '../../../etc/passwd', sql: 'SELECT 1' });
+    expect(path.dirname(item.filePath)).toBe(tmpDir);
+    expect(fs.existsSync(path.join(tmpDir, '.._.._.._etc_passwd.sql'))).toBe(true);
+  });
+
+  it('Windows 盘符路径被安全化且不越出目录', () => {
+    const item = store.saveFavorite({ name: 'C:\\Users\\admin\\evil', sql: 'SELECT 1' });
+    expect(path.dirname(item.filePath)).toBe(tmpDir);
+  });
+
+  it('Windows 保留设备名被安全化', () => {
+    for (const reserved of ['CON', 'PRN', 'AUX', 'NUL', 'COM1', 'LPT9', 'con']) {
+      const item = store.saveFavorite({ name: reserved, sql: 'SELECT 1' });
+      expect(path.basename(item.filePath)).not.toMatch(/^(con|prn|aux|nul|com\d|lpt\d)/i);
+      expect(path.dirname(item.filePath)).toBe(tmpDir);
+      store.removeFavorite(reserved);
+    }
+  });
+
+  it('超长名称被截断到安全长度', () => {
+    const item = store.saveFavorite({ name: 'x'.repeat(300), sql: 'SELECT 1' });
+    expect(path.basename(item.filePath).length).toBeLessThanOrEqual(130);
+  });
+
+  it('空名称保存为兜底名称', () => {
+    const item = store.saveFavorite({ name: '', sql: 'SELECT 1' });
+    expect(item.name).toBe('未命名收藏');
+  });
+
+  it('纯点名称不会生成非法文件', () => {
+    const item = store.saveFavorite({ name: '.', sql: 'SELECT 1' });
+    expect(path.basename(item.filePath)).not.toBe('.sql');
+    expect(item.name).toBeTruthy();
+    expect(path.dirname(item.filePath)).toBe(tmpDir);
+  });
+
+  it('相似名称不会误匹配删除（q1 不影响 q1 (2)）', () => {
+    store.saveFavorite({ name: 'q1', sql: 'SELECT 1' });
+    store.saveFavorite({ name: 'q1', sql: 'SELECT 2' }); // 产生 q1.sql 与 q1 (2).sql
+    expect(store.removeFavorite('q1')).toBe(true);
+    expect(store.listFavorites().some((f) => f.name === 'q1 (2)')).toBe(true);
+  });
+
+  it('重命名失败时源文件不被破坏', () => {
+    store.saveFavorite({ name: '甲', sql: 'SELECT 1' });
+    store.saveFavorite({ name: '乙', sql: 'SELECT 2' });
+    expect(() => store.renameFavorite('甲', '乙')).toThrow();
+    expect(fs.existsSync(path.join(tmpDir, '甲.sql'))).toBe(true);
+    expect(store.readFavorite('甲').content).toContain('SELECT 1');
+  });
+
+  it('大小写相近名称按精确文件匹配，不误删（Linux 大小写敏感）', () => {
+    store.saveFavorite({ name: 'Report', sql: 'SELECT 1' });
+    expect(store.removeFavorite('report')).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, 'Report.sql'))).toBe(true);
+  });
+});

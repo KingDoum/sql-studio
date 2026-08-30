@@ -21,6 +21,7 @@ import type {
   QueryResult,
   CellValue,
 } from '@shared/types';
+import { classifyStatement } from '@shared/sql-classify';
 
 /** 底层执行函数返回的原始结果集。 */
 export interface RawResultSet {
@@ -108,24 +109,12 @@ export function splitStatements(sql: string): string[] {
   return stmts;
 }
 
-/** 判断单条语句是否为写类（非 SELECT/SHOW/EXPLAIN/DESCRIBE/USE/SET 等只读）。 */
+/**
+ * 判断单条语句是否为写类（非只读即写；无法确定的按高风险处理）。
+ * 委托共享分类模块（@shared/sql-classify），与 Renderer 提示保持一致。
+ */
 export function isWriteStatement(stmt: string): boolean {
-  const s = stmt.trim().replace(/^\(+/, '');
-  const m = s.match(/^([a-zA-Z]+)/);
-  if (!m) return false;
-  const kw = m[1].toUpperCase();
-  const readOnly = new Set([
-    'SELECT',
-    'SHOW',
-    'EXPLAIN',
-    'DESCRIBE',
-    'DESC',
-    'USE',
-    'SET',
-    'CALL',
-    'WITH',
-  ]);
-  return !readOnly.has(kw);
+  return classifyStatement(stmt) !== 'read';
 }
 
 /** 从 mysql2 fields 元信息提取 ColumnMeta[]。 */
@@ -223,7 +212,10 @@ export class QueryService {
         rows,
         affectedRows: set.affectedRows,
         truncated,
-        elapsedMs: 0,
+        // 该结果集完成归一化时相对查询开始的累计耗时（毫秒）。
+        // 语义：由于多语句是单次往返执行，无法逐语句拆分执行时间，
+        // elapsedMs 单调递增趋近 totalElapsedMs（最后一个 ≈ totalElapsedMs）。
+        elapsedMs: Date.now() - started,
       } satisfies QueryResultSet;
     });
     const totalElapsedMs = Date.now() - started;

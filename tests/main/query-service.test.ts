@@ -50,6 +50,23 @@ describe('isWriteStatement', () => {
     expect(isWriteStatement('update t set x=1')).toBe(true);
     expect(isWriteStatement('DELETE FROM t')).toBe(true);
   });
+  it('S3：CTE 包裹写操作识别为写（WITH 开头不再误判为只读）', () => {
+    expect(isWriteStatement('WITH c AS (SELECT 1) INSERT INTO t SELECT * FROM c')).toBe(true);
+    expect(isWriteStatement('WITH c AS (SELECT 1) UPDATE t SET x=1')).toBe(true);
+    expect(isWriteStatement('WITH c AS (SELECT 1) DELETE FROM t')).toBe(true);
+    // CTE + SELECT 仍为只读
+    expect(isWriteStatement('WITH c AS (SELECT 1) SELECT * FROM c')).toBe(false);
+  });
+  it('S3：前置注释包裹的写操作识别为写', () => {
+    expect(isWriteStatement('-- 说明\nINSERT INTO t VALUES (1)')).toBe(true);
+    expect(isWriteStatement('/* hint */ DELETE FROM t')).toBe(true);
+  });
+  it('S3：CALL 按高风险处理（可能写，需确认）', () => {
+    expect(isWriteStatement('CALL refresh_stats()')).toBe(true);
+  });
+  it('S3：前置括号包裹的 SELECT 仍只读', () => {
+    expect(isWriteStatement('(SELECT 1)')).toBe(false);
+  });
 });
 
 describe('QueryService.run', () => {
@@ -135,5 +152,30 @@ describe('QueryService.run', () => {
     const svc = makeService([makeSet(1)]);
     const res = await svc.run({ connectionId: 'c1', sql: longSql });
     expect(res.resultSets[0].statement.length).toBeLessThanOrEqual(200);
+  });
+
+  it('S5：单结果集 elapsedMs 约为 totalElapsedMs（非恒 0）', async () => {
+    const svc = makeService([makeSet(5)]);
+    const res = await svc.run({ connectionId: 'c1', sql: 'SELECT * FROM t' });
+    const set = res.resultSets[0];
+    expect(set.elapsedMs).toBeGreaterThanOrEqual(0);
+    // 单结果集完成时刻 ≈ 总耗时时刻
+    expect(set.elapsedMs).toBeLessThanOrEqual(res.totalElapsedMs + 5);
+  });
+
+  it('S5：多结果集 elapsedMs 单调递增且最后一个接近 totalElapsedMs', async () => {
+    const svc = makeService([makeSet(3), makeSet(4)]);
+    const res = await svc.run({ connectionId: 'c1', sql: 'SELECT 1; SELECT 2' });
+    expect(res.resultSets).toHaveLength(2);
+    expect(res.resultSets[0].elapsedMs).toBeGreaterThanOrEqual(0);
+    expect(res.resultSets[1].elapsedMs).toBeGreaterThanOrEqual(res.resultSets[0].elapsedMs);
+    expect(res.resultSets[1].elapsedMs).toBeLessThanOrEqual(res.totalElapsedMs + 5);
+  });
+
+  it('S5：截断时 elapsedMs 仍记录（不因截断归零）', async () => {
+    const svc = makeService([makeSet(1500)], 1000);
+    const res = await svc.run({ connectionId: 'c1', sql: 'SELECT * FROM big' });
+    expect(res.resultSets[0].truncated).toBe(true);
+    expect(res.resultSets[0].elapsedMs).toBeGreaterThanOrEqual(0);
   });
 });

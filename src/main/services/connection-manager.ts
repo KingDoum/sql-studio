@@ -229,8 +229,13 @@ export class ConnectionManager {
    * 多语句执行：对含多条语句的 SQL，用临时单连接（multipleStatements=true）
    * 一次执行，返回多个结果集。临时连接用完即 end，不长期开启多语句池。
    *
-   * mysql2 在多语句下 `query(sql)` 返回结果集数组（每个元素为 [rows, fields]）；
-   * 我们归一化为 RawResultSet[]。单语句情况下返回长度为 1 的数组。
+   * mysql2 在 `query(sql)` 下返回统一的 `[rowsOrList, fieldsOrList]` 结构：
+   *   - 单语句 SELECT → `[rows, fields]`
+   *   - 单语句写（INSERT/UPDATE/DELETE…）→ `[ResultSetHeader, undefined]`
+   *   - 多语句混合 → `[rowsList, fieldsList]`，其中 rowsList[i] 为第 i 条语句的
+   *     rows（SELECT）或 ResultSetHeader（写类），fieldsList[i] 为对应 fields 或 undefined。
+   * 本方法把其归一化为 RawResultSet[]；每个元素独立成集，header 的 affectedRows
+   * 被读取（不再把多语句折叠成一个混入 header 的结果集）。
    *
    * @param config 已解密连接配置
    * @param sql 可能含多条语句的 SQL
@@ -241,34 +246,46 @@ export class ConnectionManager {
       multipleStatements: true,
       connectionLimit: 1,
     });
-    // 取消信号 → 销毁连接（中止 MySQL 查询）
+    const hardDestroy = () => {
+      // 硬销毁底层 socket：mysql2 的 conn.destroy() 只是 stream.end()（优雅关闭），
+      // 服务端查询仍会继续执行、客户端 promise 约数秒后才 settle（且会 resolve 成"正常结果"），
+      // 导致取消后可能错误写入历史。stream.destroy() 会让挂起查询立即 reject。
+      try {
+        const stream = (conn as unknown as { stream?: { destroy(): void } }).stream;
+        stream?.destroy();
+      } catch { /* ignore */ }
+      try {
+        (conn as unknown as { destroy(): void }).destroy();
+      } catch { /* ignore */ }
+    };
+    // 取消信号 → 立即本地 reject + 硬销毁连接（中止 MySQL 查询）
     if (signal) {
       if (signal.aborted) {
         try { await conn.end(); } catch {}
         throw new DOMException('已取消', 'AbortError');
       }
-      signal.addEventListener('abort', () => {
-        try { (conn as unknown as { destroy(): void }).destroy(); } catch {}
-      }, { once: true });
     }
-    const started = Date.now();
     try {
-      const res = await (conn as unknown as { query(sql: string): Promise<unknown> }).query(sql);
-      // mysql2 多语句：res 为数组（每个 [rows, fields]）；单语句：res 为 [rows, fields]
-      const sets: [QueryRow[], unknown][] = Array.isArray(res)
-        ? // 多语句时 res 形如 [[rows,fields],[rows,fields],...]；单语句为 [rows, fields]
-          isResultSetArray(res)
-          ? (res as unknown[]).map((item) => {
-              // 逐元素：SELECT 返回 [rows, fields]，INSERT/UPDATE 返回 ResultSetHeader（非数组）
-              if (Array.isArray(item) && item.length >= 2 && Array.isArray(item[0])) {
-                return item as [QueryRow[], unknown];
-              }
-              return [[] as QueryRow[], item];
-            })
-          : [res as [QueryRow[], unknown]]
-        : [[[] as QueryRow[], res]];
-      return sets.map(([rows, fields]) => normalizeRawSet(rows, fields));
+      const queryPromise = (conn as unknown as { query(sql: string): Promise<unknown> }).query(sql);
+      let result: unknown;
+      if (signal) {
+        result = await new Promise<unknown>((resolve, reject) => {
+          const onAbort = () => {
+            hardDestroy();
+            reject(new DOMException('已取消', 'AbortError'));
+          };
+          signal.addEventListener('abort', onAbort, { once: true });
+          queryPromise.then(
+            (r) => { signal.removeEventListener('abort', onAbort); resolve(r); },
+            (e) => { signal.removeEventListener('abort', onAbort); reject(e); },
+          );
+        });
+      } else {
+        result = await queryPromise;
+      }
+      return normalizeExecuteResult(result as [unknown, unknown]);
     } finally {
+      // 清理 signal 监听由上面的 removeEventListener 完成；连接最终 end 释放
       try {
         await conn.end();
       } catch {
@@ -283,21 +300,45 @@ export class ConnectionManager {
   }
 }
 
-/** 判断 mysql2 多语句返回是否为结果集数组（每个元素为二元组）。 */
-function isResultSetArray(res: unknown[]): res is [QueryRow[], unknown][] {
+/** 判断 mysql2 结果是否为 ResultSetHeader（写类语句返回的对象）。 */
+function isHeaderLike(v: unknown): v is Record<string, unknown> {
   return (
-    res.length > 0 &&
-    // 支持混合类型：INSERT/UPDATE 返回 ResultSetHeader（非数组），SELECT 返回 [rows, fields]
-    (res.every((item) => Array.isArray(item) && item.length === 2 && Array.isArray((item as unknown[])[0])) ||
-     res.some((item) => Array.isArray(item) && item.length === 2 && Array.isArray((item as unknown[])[0])))
+    typeof v === 'object' &&
+    v !== null &&
+    !Array.isArray(v) &&
+    typeof (v as Record<string, unknown>).affectedRows !== 'undefined'
   );
+}
+
+/**
+ * 把 mysql2 统一返回的 [rowsOrList, fieldsOrList] 归一化为 RawResultSet[]。
+ * - 单语句 SELECT：[rows, fields] → 1 个集
+ * - 单语句写：[header, undefined] → 1 个集（affectedRows 从 header 读取）
+ * - 多语句混合：[rowsList, fieldsList] → N 个集，位置一一对应
+ */
+function normalizeExecuteResult(res: [unknown, unknown]): RawResultSet[] {
+  const [first, second] = res;
+  // 多语句：first 是数组且元素为 rows 数组（SELECT）或 header（写类）
+  if (Array.isArray(first) && first.length > 0 && (Array.isArray(first[0]) || isHeaderLike(first[0]))) {
+    const rowsList = first as unknown[];
+    const fieldsList = (Array.isArray(second) ? second : []) as unknown[];
+    return rowsList.map((item, i) =>
+      Array.isArray(item)
+        ? normalizeRawSet(item as QueryRow[], fieldsList[i])
+        : normalizeRawSet(item as QueryRow[], fieldsList[i]),
+    );
+  }
+  // 单语句：first 为 rows 数组或 header 对象
+  return [normalizeRawSet(first as QueryRow[], second)];
 }
 
 /** 归一化单个 mysql2 结果集为 RawResultSet。 */
 function normalizeRawSet(rows: QueryRow[], fields: unknown): RawResultSet {
   const fieldArr = Array.isArray(fields) ? (fields as Array<{ name?: string }>) : [];
   const affectedRows =
-    (rows as unknown as { affectedRows?: number }).affectedRows ?? 0;
+    (rows as unknown as { affectedRows?: number }).affectedRows ??
+    (isHeaderLike(rows) ? (rows as Record<string, unknown>).affectedRows as number : 0) ??
+    0;
   return {
     rows: (Array.isArray(rows) ? rows : []) as QueryRow[],
     fields,

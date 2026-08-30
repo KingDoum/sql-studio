@@ -47,7 +47,10 @@ export class AiService {
       : controller.signal;
 
     try {
-      console.log('[AI] 请求:', url, 'model:', config.model, 'prefix:', req.prefix.slice(0, 100));
+      // 日志只输出非敏感诊断信息：URL（不含 query/密钥）与请求规模摘要。
+      // 不输出 SQL 前缀/正文/API Key（铁律：日志不得泄露完整敏感 SQL 与密钥）。
+      const urlSummary = url.split('?')[0];
+      console.log('[AI] 请求:', urlSummary, 'model:', config.model, 'prefixLen:', req.prefix.length);
       const resp = await this.fetchFn(url, {
         method: 'POST',
         headers: {

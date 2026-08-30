@@ -17,12 +17,14 @@ export interface FsLike {
   existsSync(p: string): boolean;
   readFileSync(p: string, enc: BufferEncoding): string;
   writeFileSync(p: string, content: string, enc: BufferEncoding): void;
+  mkdirSync(p: string, opts?: { recursive?: boolean }): void;
 }
 
 const nodeFs: FsLike = {
   existsSync: (p) => fs.existsSync(p),
   readFileSync: (p, enc) => fs.readFileSync(p, enc),
   writeFileSync: (p, content, enc) => fs.writeFileSync(p, content, enc),
+  mkdirSync: (p, opts) => fs.mkdirSync(p, opts),
 };
 
 export class ScriptStore {
@@ -44,7 +46,7 @@ export class ScriptStore {
   write(filePath: string, content: string): void {
     const dir = path.dirname(filePath);
     if (dir && !this.fsModule.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+      this.fsModule.mkdirSync(dir, { recursive: true });
     }
     this.fsModule.writeFileSync(filePath, content, 'utf-8');
   }

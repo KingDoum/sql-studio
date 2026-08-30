@@ -22,16 +22,32 @@ export const DEFAULT_FAVORITES_DIR_NAME = 'queries';
 /** 注释块每行前缀，如 `-- name: 每日活跃用户`。 */
 const HEADER_PREFIX = '-- ';
 
+/** 文件名最大长度（不含 .sql 后缀），防止 ENAMETOOLONG。 */
+const MAX_FILE_NAME_LENGTH = 100;
+
 /**
  * 文件名安全化：去除对路径有危险的字符，避免目录穿越与非法文件名。
  * 保留中文、字母、数字、空格、点、下划线、连字符；其余替换为下划线。
+ * 额外处理：Windows 保留设备名、纯点名称、超长名称。
  */
 function sanitizeFileName(name: string): string {
-  const cleaned = name
+  let cleaned = name
     .replace(/[\/\\:*?"<>|]/g, '_') // 文件系统保留字符
     .replace(/\s+/g, ' ') // 折叠多余空白
     .trim();
-  return cleaned.length > 0 ? cleaned : '未命名收藏';
+  // Windows 保留设备名（CON/PRN/AUX/NUL/COM1-9/LPT1-9，含扩展名形式）加前缀，避免设备名解析
+  if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i.test(cleaned)) {
+    cleaned = `_${cleaned}`;
+  }
+  // 空名 / 纯点（. 或 ..）→ 兜底名
+  if (!cleaned || /^\.+$/.test(cleaned)) return '未命名收藏';
+  // 超长名称截断（保留尾部有效字符，去除截断残留的尾点/空白）
+  if (cleaned.length > MAX_FILE_NAME_LENGTH) {
+    cleaned = cleaned
+      .slice(0, MAX_FILE_NAME_LENGTH)
+      .replace(/[.\s]+$/, '') || '未命名收藏';
+  }
+  return cleaned;
 }
 
 /** 取「收藏名」对应的 .sql 文件名（确保 .sql 后缀）。 */
@@ -160,46 +176,26 @@ export class FavoritesStore {
     };
   }
 
-  /** 按收藏名（或文件名）删除；返回是否真删除了文件。 */
+  /** 按收藏名删除；返回是否真删除了文件。统一走 resolveFavoritePath 精确定位。 */
   removeFavorite(name: string): boolean {
-    // 1) 精确文件路径（含重名序号后缀，如 "foo (2).sql"）
-    const exactPath = path.join(this.dir, toFileName(name));
-    if (fs.existsSync(exactPath)) {
-      fs.unlinkSync(exactPath);
-      return true;
-    }
-    // 2) 扫描目录按 meta.name 匹配（兼容旧数据 meta.name 为原名的情况）
-    if (fs.existsSync(this.dir)) {
-      const files = fs.readdirSync(this.dir).filter((f) => f.toLowerCase().endsWith('.sql'));
-      for (const f of files) {
-        const filePath = path.join(this.dir, f);
-        try {
-          const { meta } = parseFile(fs.readFileSync(filePath, 'utf-8'));
-          if (meta.name === name) {
-            fs.unlinkSync(filePath);
-            return true;
-          }
-        } catch {
-          // 解析失败跳过
-        }
-      }
-    }
-    return false;
+    const filePath = this.resolveFavoritePath(name);
+    if (!filePath) return false;
+    fs.unlinkSync(filePath);
+    return true;
   }
 
-  /** 按收藏名读取文件内容（供编辑器打开为标签页）；不存在抛错。 */
+  /** 按收藏名读取文件内容（供编辑器打开为标签页）；不存在抛错。统一走 resolveFavoritePath 精确定位。 */
   readFavorite(name: string): { filePath: string; content: string } {
-    const filePath = path.join(this.dir, toFileName(name));
-    if (!fs.existsSync(filePath)) {
-      throw new Error(`收藏不存在: ${name}`);
-    }
+    const filePath = this.resolveFavoritePath(name);
+    if (!filePath) throw new Error(`收藏不存在: ${name}`);
     return { filePath, content: fs.readFileSync(filePath, 'utf-8') };
   }
 
   /**
-   * 重命名收藏：把源文件名改为新名（保留元信息与正文）。
-   * - 新名转安全文件名；若目标已存在则抛错（避免覆盖）。
-   * - 更新文件顶部注释块的 name 字段。
+   * 重命名收藏：把源文件改为新名（保留元信息与正文）。
+   * - 目标冲突检查统一走 resolveFavoritePath（文件名精确 + meta.name 回扫），
+   *   防止产生两个相同 meta.name 的收藏。
+   * - 先写新文件再删旧文件；删旧失败时回滚新文件，确保原文件不被破坏。
    * @returns 重命名后的 FavoriteItem
    */
   renameFavorite(name: string, newName: string): FavoriteItem {
@@ -207,7 +203,12 @@ export class FavoritesStore {
     if (!oldPath) throw new Error(`收藏不存在: ${name}`);
     const newFileName = toFileName(newName);
     const newPath = path.join(this.dir, newFileName);
-    if (fs.existsSync(newPath)) {
+    // 目标逻辑名（精确文件名或 meta.name）已被其它收藏占用 → 拒绝，避免覆盖
+    const conflictPath = this.resolveFavoritePath(newName);
+    if (conflictPath && conflictPath !== oldPath) {
+      throw new Error(`收藏名已存在: ${newName}`);
+    }
+    if (fs.existsSync(newPath) && newPath !== oldPath) {
       throw new Error(`收藏名已存在: ${newName}`);
     }
     const content = fs.readFileSync(oldPath, 'utf-8');
@@ -219,8 +220,16 @@ export class FavoritesStore {
     if (meta.tags && meta.tags.length > 0) blocks.push(`${HEADER_PREFIX}tags: ${meta.tags.join(', ')}`);
     if (meta.createdAt) blocks.push(`${HEADER_PREFIX}createdAt: ${meta.createdAt}`);
     const newContent = `${blocks.join('\n')}\n\n${sql.replace(/\s*$/, '')}\n`;
+    // 先写新文件；成功后删除旧文件。删旧失败时回滚新文件，保证不产生半成品且原文件完好。
     fs.writeFileSync(newPath, newContent, 'utf-8');
-    fs.unlinkSync(oldPath);
+    if (newPath !== oldPath) {
+      try {
+        fs.unlinkSync(oldPath);
+      } catch (err) {
+        try { fs.unlinkSync(newPath); } catch { /* 回滚失败尽力而为 */ }
+        throw err;
+      }
+    }
     const stat = fs.statSync(newPath);
     return {
       filePath: newPath,
@@ -233,7 +242,11 @@ export class FavoritesStore {
     };
   }
 
-  /** 按收藏名定位文件路径（兼容 meta.name 与文件名两种匹配）；找不到返回 null。 */
+  /**
+   * 按收藏名定位文件路径（兼容文件名精确匹配与 meta.name 回扫两种规则）；
+   * 找到返回绝对路径，找不到返回 null。保存/读取/删除/重命名统一使用，
+   * 保证四者定位规则一致。
+   */
   private resolveFavoritePath(name: string): string | null {
     const exactPath = path.join(this.dir, toFileName(name));
     if (fs.existsSync(exactPath)) return exactPath;
@@ -241,6 +254,7 @@ export class FavoritesStore {
     const files = fs.readdirSync(this.dir).filter((f) => f.toLowerCase().endsWith('.sql'));
     for (const f of files) {
       const filePath = path.join(this.dir, f);
+      if (filePath === exactPath) continue;
       try {
         const { meta } = parseFile(fs.readFileSync(filePath, 'utf-8'));
         if (meta.name === name) return filePath;

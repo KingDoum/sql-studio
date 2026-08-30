@@ -247,7 +247,7 @@ function App() {
     }
     if (
       hasWriteStatements(splitStatements(sql)) &&
-      !window.confirm('该 SQL 包含写入操作（INSERT/UPDATE/DELETE 等），确定执行？')
+      !window.confirm('该 SQL 包含写入操作或无法识别的语句（将按高风险执行），确定执行？')
     ) {
       return;
     }

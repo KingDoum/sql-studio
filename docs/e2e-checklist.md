@@ -96,8 +96,8 @@
 - [ ] 切换连接 → 对象浏览器刷新显示新连接的库表
 - [ ] 编辑器补全和语义高亮根据新连接 schema 重建
 
-## 已知限制（待任务 13 解决）
-- 打开/保存/另存为使用 `window.prompt` 输入路径，而非系统文件对话框
-- @monaco-editor/react 默认从 CDN 加载 monaco，离线环境需配置本地打包
-- 导出路径同样使用 prompt，非系统对话框
-- 此冒烟清单需在 Windows 开发机上执行（Electron GUI 冒烟需要图形环境）
+## 已知限制（2026-08-30 复核更新）
+- 打开/保存/另存为已改用 Electron 原生文件对话框（dialog:showOpenDialog / dialog:showSaveDialog），不再使用 `window.prompt`（源码已无 prompt 入口，S6 复核确认；`window.confirm` 仅用于删除/覆盖/写操作确认）。
+- @monaco-editor/react 生产构建通过本地 loader 加载，不依赖 CDN（main.tsx 已 loader.config 本地 monaco）。
+- 导出路径已改用系统保存对话框，不再使用 prompt。
+- 此冒烟清单的 Windows Electron GUI 旅程需在 Windows 开发机执行；NAS 无头环境只能做构建/单测/无头 E2E。

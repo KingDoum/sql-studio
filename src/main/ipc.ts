@@ -33,6 +33,7 @@ export interface IpcDeps {
   scriptStore?: ScriptStore;
   excelExporter?: ExcelExporter;
   sqlExporter?: SqlExporter;
+  csvExporter?: CsvExporter;
 }
 
 /** 统一异常 → 友好错误响应。 */
@@ -235,7 +236,7 @@ export function registerIpc(deps: IpcDeps, ipcMain: IpcMain): void {
     return { filePath: arg.options.filePath, rowCount: n };
   });
   handle(IPC_CHANNELS['export:csv'], (arg) => {
-    const exporter = new CsvExporter();
+    const exporter = deps.csvExporter ?? new CsvExporter();
     return exporter.export(arg).then((n) => ({ filePath: arg.options.filePath, rowCount: n }));
   });
 

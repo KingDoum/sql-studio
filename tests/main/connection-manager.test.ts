@@ -223,6 +223,124 @@ describe('execute', () => {
   });
 });
 
+describe('executeMany（S5）', () => {
+  it('多语句返回多个结果集并释放临时连接', async () => {
+    const conn = makeFakeConnection();
+    // 真实 mysql2 多语句返回 [rowsList, fieldsList]（位置一一对应）
+    conn.query = vi.fn(async () => [
+      [[{ id: 1 }], [{ id: 2 }]],
+      [[{ name: 'id' }], [{ name: 'id' }]],
+    ]) as unknown as PooledConnection['query'];
+    const factory = new FakeFactory(() => makeFakePool().pool, () => conn as unknown as SingleConnectionLike);
+    const mgr = new ConnectionManager(factory);
+    const sets = await mgr.executeMany(baseConfig(), 'SELECT 1; SELECT 2');
+    expect(sets).toHaveLength(2);
+    expect(sets[0].rows).toEqual([{ id: 1 }]);
+    expect(sets[1].rows).toEqual([{ id: 2 }]);
+    expect(conn.query).toHaveBeenCalledWith('SELECT 1; SELECT 2');
+    expect(conn.end).toHaveBeenCalled();
+  });
+
+  it('单语句（[rows, fields]）归一化为单结果集', async () => {
+    const conn = makeFakeConnection();
+    conn.query = vi.fn(async () => [[{ id: 1 }], [{ name: 'id' }]]) as unknown as PooledConnection['query'];
+    const factory = new FakeFactory(() => makeFakePool().pool, () => conn as unknown as SingleConnectionLike);
+    const mgr = new ConnectionManager(factory);
+    const sets = await mgr.executeMany(baseConfig(), 'SELECT 1');
+    expect(sets).toHaveLength(1);
+    expect(sets[0].rows).toEqual([{ id: 1 }]);
+    expect(sets[0].isWrite).toBe(false);
+    expect(conn.end).toHaveBeenCalled();
+  });
+
+  it('写类语句（[header, undefined]）标记 affectedRows 且 isWrite=true', async () => {
+    const conn = makeFakeConnection();
+    // mysql2 单语句写返回 [ResultSetHeader, undefined]
+    const header = { affectedRows: 3, insertId: 1 };
+    conn.query = vi.fn(async () => [header, undefined]) as unknown as PooledConnection['query'];
+    const factory = new FakeFactory(() => makeFakePool().pool, () => conn as unknown as SingleConnectionLike);
+    const mgr = new ConnectionManager(factory);
+    const sets = await mgr.executeMany(baseConfig(), 'INSERT INTO t VALUES (1),(2),(3)');
+    expect(sets).toHaveLength(1);
+    expect(sets[0].affectedRows).toBe(3);
+    expect(sets[0].isWrite).toBe(true);
+    expect(conn.end).toHaveBeenCalled();
+  });
+
+  it('多语句混合（SELECT + 写 + SELECT）按位置归一化，header 独立成集', async () => {
+    const conn = makeFakeConnection();
+    // 真实形状：rowsList 含 rows 数组与 header；fieldsList 对应 fields 或 undefined
+    const header = { affectedRows: 1, insertId: 9 };
+    conn.query = vi.fn(async () => [
+      [[{ a: 1 }], header, [{ b: 2 }]],
+      [[{ name: 'a' }], undefined, [{ name: 'b' }]],
+    ]) as unknown as PooledConnection['query'];
+    const factory = new FakeFactory(() => makeFakePool().pool, () => conn as unknown as SingleConnectionLike);
+    const mgr = new ConnectionManager(factory);
+    const sets = await mgr.executeMany(baseConfig(), 'SELECT 1; INSERT INTO t VALUES (9); SELECT 2');
+    expect(sets).toHaveLength(3);
+    expect(sets[0].rows).toEqual([{ a: 1 }]);
+    expect(sets[0].isWrite).toBe(false);
+    expect(sets[1].affectedRows).toBe(1);
+    expect(sets[1].isWrite).toBe(true);
+    expect(sets[1].rows).toEqual([]);
+    expect(sets[2].rows).toEqual([{ b: 2 }]);
+    expect(sets[2].isWrite).toBe(false);
+    expect(conn.end).toHaveBeenCalled();
+  });
+
+  it('执行失败时连接仍被释放（finally end）', async () => {
+    const conn = makeFakeConnection();
+    conn.query = vi.fn(async () => {
+      throw new Error('语法错误');
+    }) as unknown as PooledConnection['query'];
+    const factory = new FakeFactory(() => makeFakePool().pool, () => conn as unknown as SingleConnectionLike);
+    const mgr = new ConnectionManager(factory);
+    await expect(mgr.executeMany(baseConfig(), 'BAD SQL')).rejects.toThrow('语法错误');
+    expect(conn.end).toHaveBeenCalled();
+  });
+
+  it('已 abort 的 signal：不执行查询、抛 AbortError、连接被关闭', async () => {
+    const conn = makeFakeConnection();
+    const factory = new FakeFactory(() => makeFakePool().pool, () => conn as unknown as SingleConnectionLike);
+    const mgr = new ConnectionManager(factory);
+    const controller = new AbortController();
+    controller.abort();
+    await expect(mgr.executeMany(baseConfig(), 'SELECT 1', controller.signal)).rejects.toThrow(/已取消/);
+    expect(conn.query).not.toHaveBeenCalled();
+    expect(conn.end).toHaveBeenCalled();
+  });
+
+  it('执行中 abort：本地立即 reject AbortError + 硬销毁连接 + 释放', async () => {
+    const conn = makeFakeConnection() as unknown as SingleConnectionLike & {
+      destroy: ReturnType<typeof vi.fn>;
+      stream?: { destroy: ReturnType<typeof vi.fn> };
+    };
+    (conn as unknown as { destroy: unknown }).destroy = vi.fn();
+    (conn as unknown as { stream: { destroy: unknown } }).stream = { destroy: vi.fn() };
+    conn.query = vi.fn(
+      () =>
+        new Promise((_resolve, reject) => {
+          // 查询挂起，只会在硬销毁时由 mysql2 内部 reject
+          setTimeout(() => reject(new Error('connection destroyed')), 5000);
+        }),
+    ) as unknown as PooledConnection['query'];
+    const factory = new FakeFactory(() => makeFakePool().pool, () => conn as unknown as SingleConnectionLike);
+    const mgr = new ConnectionManager(factory);
+    const controller = new AbortController();
+    const promise = mgr.executeMany(baseConfig(), 'SELECT SLEEP(10)', controller.signal);
+    // 等 listener 注册 + query 挂起后，再触发取消
+    await Promise.resolve();
+    controller.abort();
+    // 新语义：abort 本地立即 reject AbortError（不等待 mysql2 destroy 回调）
+    await expect(promise).rejects.toThrow(/已取消/);
+    // 底层 socket 被硬销毁，连接最终 end 释放，不会泄漏
+    expect((conn as unknown as { stream: { destroy: ReturnType<typeof vi.fn> } }).stream.destroy).toHaveBeenCalled();
+    expect((conn as unknown as { destroy: ReturnType<typeof vi.fn> }).destroy).toHaveBeenCalled();
+    expect(conn.end).toHaveBeenCalled();
+  });
+});
+
 describe('normalizeConnectionError', () => {
   const cases: [string, string][] = [
     ['ETIMEDOUT', '超时'],

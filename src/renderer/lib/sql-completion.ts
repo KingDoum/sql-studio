@@ -189,9 +189,28 @@ function dedupe(items: CompletionItem[]): CompletionItem[] {
   return out;
 }
 
+/**
+ * 按输入词过滤补全项（大小写不敏感）：
+ * - 前缀匹配优先（startsWith），保持原 score，排在前面；
+ * - 其余表/库/字段做子串包含匹配（includes）作为兜底，score 略降避免压过前缀匹配；
+ *   这样输入 `parent` 也能搜到 `ads_parent_asin_daily_sales`。
+ * - 关键字（keyword）只做前缀匹配，避免输入 `in` 时带出一堆含 in 的关键字噪音。
+ */
 function filterByWord(items: CompletionItem[], word: string): CompletionItem[] {
   const w = word.trim().toLowerCase();
-  return w ? items.filter((it) => it.label.toLowerCase().startsWith(w)) : items;
+  if (!w) return items;
+  const prefixed: CompletionItem[] = [];
+  const included: CompletionItem[] = [];
+  for (const it of items) {
+    const label = it.label.toLowerCase();
+    const isKeyword = it.category === 'keyword';
+    if (label.startsWith(w)) {
+      prefixed.push(it);
+    } else if (!isKeyword && label.includes(w)) {
+      included.push({ ...it, score: (it.score ?? 0) - 1 });
+    }
+  }
+  return [...prefixed, ...included];
 }
 
 function sortItems(items: CompletionItem[]): CompletionItem[] {

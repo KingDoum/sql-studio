@@ -91,6 +91,47 @@ describe('SchemaCompletionProvider', () => {
     expect(items.some((i) => i.label === 'orders')).toBe(false);
   });
 
+  it('S-优化：子串匹配——输入 parent 能搜到 ads_parent_asin_daily_sales', async () => {
+    const snapshot = makeSnapshot({
+      tables: [
+        { name: 'ads_parent_asin_daily_sales', type: 'table' as const, isView: false },
+        { name: 'ads_parent_asin_info', type: 'table' as const, isView: false },
+        { name: 'ods_orders', type: 'table' as const, isView: false },
+      ],
+    });
+    const p = new SchemaCompletionProvider(snapshot);
+    const items = await p.provideCompletions({ prefix: 'SELECT * FROM ', word: 'parent' });
+    expect(items.some((i) => i.label === 'ads_parent_asin_daily_sales')).toBe(true);
+    expect(items.some((i) => i.label === 'ads_parent_asin_info')).toBe(true);
+    // 不含 parent 的表不应出现
+    expect(items.some((i) => i.label === 'ods_orders')).toBe(false);
+  });
+
+  it('S-优化：前缀匹配优先于子串匹配', async () => {
+    const snapshot = makeSnapshot({
+      tables: [
+        { name: 'parent_orders', type: 'table' as const, isView: false },
+        { name: 'ads_my_parent_extra', type: 'table' as const, isView: false },
+      ],
+    });
+    const p = new SchemaCompletionProvider(snapshot);
+    const items = await p.provideCompletions({ prefix: 'SELECT * FROM ', word: 'parent' });
+    const idxPrefix = items.findIndex((i) => i.label === 'parent_orders');
+    const idxSubstr = items.findIndex((i) => i.label === 'ads_my_parent_extra');
+    expect(idxPrefix).toBeGreaterThanOrEqual(0);
+    expect(idxSubstr).toBeGreaterThanOrEqual(0);
+    expect(idxPrefix).toBeLessThan(idxSubstr); // 前缀匹配排前
+  });
+
+  it('S-优化：关键字不做子串匹配（避免输入 in 带出噪音）', async () => {
+    const p = new SchemaCompletionProvider(makeSnapshot());
+    const items = await p.provideCompletions({ prefix: 'SELECT * FROM ', word: 'in' });
+    // 'IN' 是关键字本身（前缀匹配）；但不应出现仅"包含 in"的非目标关键字如 'CONSTRAINT'
+    expect(items.some((i) => i.label === 'IN' && i.category === 'keyword')).toBe(true);
+    expect(items.some((i) => i.label === 'CONSTRAINT')).toBe(false);
+    expect(items.some((i) => i.label === 'BEGIN')).toBe(false);
+  });
+
   it('视图也在表候选内', async () => {
     const p = new SchemaCompletionProvider(makeSnapshot());
     const items = await p.provideCompletions({ prefix: 'SELECT * FROM ', word: 'v' });

@@ -218,7 +218,18 @@ describe('名称边界安全（S1）', () => {
     expect(store.readFavorite('甲').content).toContain('SELECT 1');
   });
 
-  it('大小写相近名称按精确文件匹配，不误删（Linux 大小写敏感）', () => {
+  it('大小写相近名称按精确文件匹配，不误删（仅大小写敏感文件系统）', (ctx) => {
+    // Windows / macOS APFS 默认大小写不敏感：Report.sql 与 report.sql 是同一文件，
+    // "误删"语义不成立，跳过；仅 Linux 等大小写敏感 FS 上验证精确匹配优先。
+    const probe = path.join(tmpDir, '__case_probe__.tmp');
+    try {
+      fs.writeFileSync(probe, 'x');
+      const hit = fs.existsSync(path.join(tmpDir, '__CASE_PROBE__.tmp'));
+      fs.rmSync(probe, { force: true });
+      if (hit) ctx.skip(); // 大小写不敏感文件系统
+    } catch {
+      /* 探测失败则不跳过，按现状执行 */
+    }
     store.saveFavorite({ name: 'Report', sql: 'SELECT 1' });
     expect(store.removeFavorite('report')).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, 'Report.sql'))).toBe(true);

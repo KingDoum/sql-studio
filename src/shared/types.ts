@@ -97,6 +97,8 @@ export interface ColumnMeta {
   comment?: string;
   /** 字符集（字符类型才有），用于语义高亮与补全。 */
   charset?: string;
+  /** 结果集字段来源表名（mysql2 field.orgTable），用于主进程回填列注释。 */
+  tableName?: string;
 }
 
 /** 表的元数据。 */

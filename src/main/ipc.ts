@@ -53,11 +53,12 @@ function makeExecutor(deps: IpcDeps, connectionId: string, database?: string): (
   const config = deps.metadataStore.getConnectionConfig(connectionId);
   if (!config) throw new Error(`连接不存在: ${connectionId}`);
   return (sql: string, signal?: AbortSignal) => {
-    // 如果传入了 database 且与连接配置不同，自动加 USE 前缀（解决 no database selected）
-    const finalSql = database && database !== config.database
-      ? `USE \`${database.replace(/`/g, '``')}\`;\n${sql}`
-      : sql;
-    return deps.connectionManager.executeMany(config as ConnectionConfig, finalSql, signal);
+    // 目标库与连接默认库不同时，直接把目标库写入连接配置（临时连接建连即 USE 该库），
+    // 避免在 SQL 前拼 `USE db;` —— 那会让 USE 语句成为一个空结果集（用户看到"结果1 恒 0 行"）。
+    const effectiveConfig = database && database !== config.database
+      ? { ...config, database }
+      : config;
+    return deps.connectionManager.executeMany(effectiveConfig as ConnectionConfig, sql, signal);
   };
 }
 
@@ -180,6 +181,8 @@ export function registerIpc(deps: IpcDeps, ipcMain: IpcMain): void {
       const executor = makeExecutor(deps, arg.connectionId, arg.database);
       const qs = new QueryService(executor);
       const result = await qs.run(arg, abortController.signal);
+      // 回填列注释（普通查询的 mysql2 fields 不含 Comment，需查 SchemaCache）
+      await enrichColumnComments(result, arg.connectionId, arg.database);
       // 自动记录历史
       try {
         const connSummary = deps.metadataStore.getConnection(arg.connectionId);
@@ -199,6 +202,39 @@ export function registerIpc(deps: IpcDeps, ipcMain: IpcMain): void {
       queryAborters.delete(queryId);
     }
   });
+
+  /**
+   * 给查询结果的列补上来自 SchemaCache 的注释（仅当列带 tableName 且当前库能查到该表）。
+   * 不阻塞主流程：查不到就保持无注释。
+   */
+  async function enrichColumnComments(
+    result: import('@shared/types').QueryResult,
+    connectionId: string,
+    database?: string,
+  ): Promise<void> {
+    if (!database) return;
+    const cache = getSchemaCache(connectionId);
+    for (const rs of result.resultSets) {
+      if (!rs.columns?.length) continue;
+      const tables = Array.from(new Set(rs.columns.map((c) => c.tableName).filter(Boolean) as string[]));
+      if (!tables.length) continue;
+      const colsByTable = new Map<string, import('@shared/types').ColumnMeta[]>();
+      for (const t of tables) {
+        try {
+          colsByTable.set(t, await cache.getColumns(database, t));
+        } catch {
+          colsByTable.set(t, []);
+        }
+      }
+      rs.columns = rs.columns.map((c) => {
+        if (c.comment) return c; // 已有注释不覆盖
+        if (!c.tableName) return c;
+        const cols = colsByTable.get(c.tableName);
+        const meta = cols?.find((x) => x.name === c.name);
+        return meta?.comment ? { ...c, comment: meta.comment } : c;
+      });
+    }
+  }
   handle(IPC_CHANNELS['query:cancel'], (arg) => {
     const aborter = queryAborters.get(`${arg.connectionId}:${arg.queryId}`);
     if (aborter) {

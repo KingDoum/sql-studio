@@ -117,6 +117,29 @@ describe('registerIpc', () => {
     expect(hist.data.length).toBe(1);
   });
 
+  it('S-修复：目标库与连接默认库不同时不拼 USE 前缀（不再产生空结果集）', async () => {
+    const conn = metadataStore.saveConnection({ name: 'c1', host: 'h', port: 3306, user: 'u', password: 'p', charset: 'utf8mb4', database: 'app' });
+    let capturedSql = '';
+    let capturedConfigDb: unknown = null;
+    const fakeCm = deps.connectionManager as unknown as {
+      executeMany: (c: { database?: string }, sql: string) => Promise<RawResultSet[]>;
+    };
+    fakeCm.executeMany = (c, sql) => {
+      capturedSql = sql;
+      capturedConfigDb = c?.database;
+      return Promise.resolve([{ rows: [{ id: 1 }], fields: [{ name: 'id' }], affectedRows: 0, isWrite: false }]);
+    };
+    const fn = handlers.get('query:execute')!;
+    // 用户切到 shop 库执行
+    const res = (await fn(null, { connectionId: conn.id, sql: 'SELECT 1', database: 'shop' })) as { ok: boolean };
+    expect(res.ok).toBe(true);
+    // 不应拼 USE 前缀（否则会产生一个空结果集）
+    expect(capturedSql.startsWith('USE')).toBe(false);
+    expect(capturedSql).toContain('SELECT 1');
+    // 目标库通过连接配置传递（临时连接直接连到 shop）
+    expect(capturedConfigDb).toBe('shop');
+  });
+
   it('query:cancel 端到端触发 executeMany 收到已 abort 的 signal', async () => {
     const conn = metadataStore.saveConnection({ name: 'c1', host: 'h', port: 3306, user: 'u', password: 'p', charset: 'utf8mb4' });
     // 捕获传入 executeMany 的 signal；让查询挂起直至被取消

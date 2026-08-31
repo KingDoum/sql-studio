@@ -17,7 +17,6 @@ import Editor, { type BeforeMount, type OnMount } from '@monaco-editor/react';
 import { format } from 'sql-formatter';
 import { Brain, FolderOpen, Play, Square } from 'lucide-react';
 import type { ColumnMeta, EditorTab, TableMeta, ThemeMode } from '@shared/types';
-import { getCurrentStatement } from '@renderer/lib/sql-utils';
 import {
   SchemaCompletionProvider,
   type SchemaSnapshot,
@@ -190,7 +189,7 @@ export const SqlEditor = React.forwardRef<SqlEditorHandle, SqlEditorProps>(funct
     };
   }, [aiState]);
 
-  // 获取执行语句：选区优先，否则取当前语句
+  // 获取执行语句：选区优先；无选区时执行整个编辑器内容（支持多条 `;` 分隔的语句都出结果）
   const getExecuteSql = useCallback((): string => {
     const editor = editorRef.current;
     if (!editor) return tab.sql;
@@ -200,12 +199,8 @@ export const SqlEditor = React.forwardRef<SqlEditorHandle, SqlEditorProps>(funct
     if (sel && !sel.isEmpty()) {
       return model.getValueInRange(sel);
     }
-    const pos = editor.getPosition();
-    if (!pos) return tab.sql;
-    const offset = model.getOffsetAt(pos);
-    // 当前语句若有选区则直接用选区结果
-    const stmt = getCurrentStatement(model.getValue(), offset);
-    return stmt || tab.sql;
+    // 无选区 → 执行全部（多语句一次执行，多个结果集都能展示）
+    return model.getValue();
   }, [tab.sql]);
 
   const handleExecute = useCallback(async () => {

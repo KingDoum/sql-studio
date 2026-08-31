@@ -122,18 +122,50 @@ function extractColumns(fields: unknown): ColumnMeta[] {
   if (!Array.isArray(fields)) return [];
   return (fields as Array<Record<string, unknown>>).map((f) => {
     const name = String(f.name ?? f.column ?? '');
-    const type = String(f.type ?? f.dbType ?? 'unknown');
+    const rawType = f.type ?? f.dbType ?? 'unknown';
+    const type = typeof rawType === 'number'
+      ? mysql2TypeToName(rawType)
+      : normalizeType(String(rawType));
     return {
       name,
-      type: normalizeType(type),
+      type,
       nullable: f.nullable !== false,
       isPrimary: Boolean(f.primaryKey),
       isUnique: Boolean(f.unique),
       defaultValue: (f.defaultValue as string | null) ?? null,
       comment: typeof f.comment === 'string' ? f.comment : undefined,
       charset: typeof f.charset === 'string' ? f.charset : undefined,
+      // 结果集字段来源表名（mysql2 field.table/orgTable），供主进程回填列注释
+      tableName: (f.orgTable as string | undefined) ?? (f.table as string | undefined),
     } satisfies ColumnMeta;
   });
+}
+
+/** mysql2 数字类型码 → 可读类型名（QueryService 查询结果的 f.type 是数字）。 */
+function mysql2TypeToName(code: number): string {
+  switch (code) {
+    case 0: case 246: return 'decimal';
+    case 1: return 'tinyint';
+    case 2: return 'smallint';
+    case 3: return 'int';
+    case 4: return 'float';
+    case 5: return 'double';
+    case 7: case 12: return 'datetime';
+    case 8: return 'bigint';
+    case 9: return 'mediumint';
+    case 10: return 'date';
+    case 11: return 'time';
+    case 13: return 'year';
+    case 15: case 253: return 'varchar';
+    case 16: return 'bit';
+    case 245: return 'json';
+    case 247: return 'enum';
+    case 248: return 'set';
+    case 249: case 250: case 251: case 252: return 'blob';
+    case 254: return 'char';
+    case 255: return 'geometry';
+    default: return 'unknown';
+  }
 }
 
 /** 把 mysql2 类型名粗略归一为 ColumnType。 */
@@ -157,12 +189,13 @@ function normalizeType(raw: string): ColumnMeta['type'] {
   return raw;
 }
 
-/** 把一行记录转为 CellValue[][]（NULL→null，Buffer→Uint8Array，其余保持）。 */
+/** 把一行记录转为 CellValue[][]（NULL→null，Buffer→Uint8Array，Date→本地可读，其余保持）。 */
 function rowsToCells(rows: Record<string, unknown>[]): CellValue[][] {
   return rows.map((row) => {
     return Object.keys(row).map((k) => {
       const v = row[k];
       if (v === null || v === undefined) return null;
+      if (v instanceof Date) return formatDateLocal(v);
       if (typeof v === 'object' && v instanceof Uint8Array) return v;
       if (typeof v === 'object' && typeof (v as { length?: number }).length === 'number' && (v as { constructor?: { name?: string } }).constructor?.name === 'Buffer') {
         return new Uint8Array((v as Uint8Array).buffer ?? (v as unknown as Uint8Array));
@@ -171,6 +204,17 @@ function rowsToCells(rows: Record<string, unknown>[]): CellValue[][] {
       return v as CellValue;
     });
   });
+}
+
+/** Date → 本地可读字符串（YYYY-MM-DD HH:mm:ss；DATE 类仅显示日期部分）。 */
+export function formatDateLocal(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const datePart = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  // 无时间部分（时分秒均为 0 且原值只含日期）→ 只显示日期
+  if (d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0 && d.getMilliseconds() === 0) {
+    return datePart;
+  }
+  return `${datePart} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 export class QueryService {

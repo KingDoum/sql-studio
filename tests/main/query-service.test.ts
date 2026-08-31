@@ -178,4 +178,62 @@ describe('QueryService.run', () => {
     expect(res.resultSets[0].truncated).toBe(true);
     expect(res.resultSets[0].elapsedMs).toBeGreaterThanOrEqual(0);
   });
+
+  it('S-修复：mysql2 数字类型码映射为可读类型名（不再显示 10/253 等数字）', async () => {
+    const svc = new QueryService(async () => [
+      {
+        rows: [],
+        fields: [
+          { name: 'event_date', type: 10, table: 't', orgTable: 't' },   // DATE
+          { name: 'name', type: 253, table: 't', orgTable: 't' },          // VARCHAR
+          { name: 'amount', type: 246, table: 't', orgTable: 't' },        // DECIMAL
+          { name: 'id', type: 3, table: 't', orgTable: 't' },              // INT
+        ],
+        affectedRows: 0,
+        isWrite: false,
+      },
+    ]);
+    const res = await svc.run({ connectionId: 'c1', sql: 'SELECT * FROM t' });
+    const types = res.resultSets[0].columns.map((c) => c.type);
+    expect(types).toContain('date');
+    expect(types).toContain('varchar');
+    expect(types).toContain('decimal');
+    expect(types).toContain('int');
+    expect(types.some((t) => /^\d+$/.test(t))).toBe(false); // 不再有纯数字类型码
+  });
+
+  it('S-修复：结果集列带 tableName（来自 mysql2 orgTable）供主进程回填注释', async () => {
+    const svc = new QueryService(async () => [
+      {
+        rows: [],
+        fields: [
+          { name: 'event_date', type: 10, table: 't_demo', orgTable: 't_demo' },
+        ],
+        affectedRows: 0,
+        isWrite: false,
+      },
+    ]);
+    const res = await svc.run({ connectionId: 'c1', sql: 'SELECT * FROM t_demo' });
+    expect(res.resultSets[0].columns[0].tableName).toBe('t_demo');
+  });
+
+  it('S-修复：Date 值转本地可读字符串（不再显示 2024-12-31T16:00:00.000Z）', async () => {
+    // 构造一个"本地时区 2024-12-31 00:00"的 Date（避免依赖运行环境时区）
+    const local = new Date(2024, 11, 31, 0, 0, 0, 0);
+    const svc = new QueryService(async () => [
+      {
+        rows: [{ event_date: local }],
+        fields: [{ name: 'event_date', type: 10, table: 't', orgTable: 't' }],
+        affectedRows: 0,
+        isWrite: false,
+      },
+    ]);
+    const res = await svc.run({ connectionId: 'c1', sql: 'SELECT * FROM t' });
+    const cell = res.resultSets[0].rows[0][0];
+    expect(typeof cell).toBe('string');
+    expect(cell).toMatch(/^2024-12-31/);
+    expect(String(cell)).not.toContain('T');
+    expect(String(cell)).not.toContain('Z');
+    expect(String(cell)).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/);
+  });
 });

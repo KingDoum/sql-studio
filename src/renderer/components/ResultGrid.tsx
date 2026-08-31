@@ -167,7 +167,8 @@ export function ResultGrid({ columns, rows, showFilter = true }: ResultGridProps
             title={c.comment || c.type}
           >
             <span className="grid-col-name">{c.name}</span>
-            <span className="grid-col-meta">{c.type}</span>
+            {/* 有注释显示注释（悬停提示完整），无注释显示可读类型；不显示原始类型码 */}
+            <span className="grid-col-meta">{c.comment || c.type}</span>
             {sortCol === ci && sortDir !== 'none' && (
               <span className="grid-sort-icon">
                 {sortDir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />}

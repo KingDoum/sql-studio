@@ -157,76 +157,81 @@ export function ResultGrid({ columns, rows, showFilter = true }: ResultGridProps
 
   return (
     <div className="result-grid-wrap">
-      {/* 表头（固定，grid 列宽单一源） */}
-      <div className="grid-header" style={{ gridTemplateColumns: gridTemplate, minWidth }}>
-        {columns.map((c, ci) => (
-          <div
-            key={c.name}
-            className={`grid-header-cell${sortCol === ci && sortDir !== 'none' ? ' sorting' : ''}`}
-            onClick={() => handleSortClick(ci)}
-            title={c.comment || c.type}
-          >
-            <span className="grid-col-name">{c.name}</span>
-            {/* 有注释显示注释（悬停提示完整），无注释显示可读类型；不显示原始类型码 */}
-            <span className="grid-col-meta">{c.comment || c.type}</span>
-            {sortCol === ci && sortDir !== 'none' && (
-              <span className="grid-sort-icon">
-                {sortDir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />}
-              </span>
-            )}
-            <span
-              className="grid-resize-handle"
-              data-testid={`resize-${c.name}`}
-              onPointerDown={onResizeStart(ci)}
-              onPointerMove={onResizeMove(ci)}
-              onPointerUp={onResizeEnd(ci)}
-            />
-          </div>
-        ))}
-      </div>
-      {/* 筛选行（固定，同一 gridTemplateColumns；由结果工具栏开关控制） */}
-      {showFilter && (
-        <div className="grid-filter" style={{ gridTemplateColumns: gridTemplate, minWidth }}>
-          {columns.map((c, ci) => (
-            <input
-              key={`f-${c.name}`}
-              className="grid-filter-input"
-              placeholder="筛选…"
-              aria-label={`筛选 ${c.name}`}
-              value={filters[ci] ?? ''}
-              onChange={(e) => setFilters((f) => ({ ...f, [ci]: e.target.value }))}
-            />
-          ))}
-        </div>
-      )}
-      {/* 数据体（虚拟滚动，同列宽） */}
-      <div className="grid-body" ref={handleBodyRef} onScroll={handleBodyScroll} style={{ minWidth }}>
-        <div className="grid-spacer" style={{ height: visibleRows.length * ROW_HEIGHT, minWidth }}>
-          {rendered.map((row, ri) => {
-            const absIdx = start + ri;
-            return (
+      {/* 统一横向滚动容器（2026-08-31：表头/筛选/表体共享横向滚动，底部滚动条可拖） */}
+      <div className="result-grid-scroll">
+        <div className="result-grid-inner" style={{ minWidth }}>
+          {/* 表头（固定，grid 列宽单一源） */}
+          <div className="grid-header" style={{ gridTemplateColumns: gridTemplate }}>
+            {columns.map((c, ci) => (
               <div
-                key={absIdx}
-                className="grid-row"
-                style={{ top: absIdx * ROW_HEIGHT, gridTemplateColumns: gridTemplate, minWidth }}
+                key={c.name}
+                className={`grid-header-cell${sortCol === ci && sortDir !== 'none' ? ' sorting' : ''}`}
+                onClick={() => handleSortClick(ci)}
+                title={c.comment || c.type}
               >
-                {row.map((cell, ci) => {
-                  const isNull = cell === null || cell === undefined;
-                  const text = formatCell(cell);
-                  return (
-                    <div
-                      key={`${absIdx}-${ci}`}
-                      className={`grid-cell${isNull ? ' null-cell' : ''}`}
-                      title={text.length > 120 ? text : undefined}
-                      onDoubleClick={() => void copyCell(cell)}
-                    >
-                      {isNull ? 'NULL' : text}
-                    </div>
-                  );
-                })}
+                <span className="grid-col-name">{c.name}</span>
+                {/* 有注释显示注释（悬停提示完整），无注释显示可读类型；不显示原始类型码 */}
+                <span className="grid-col-meta">{c.comment || c.type}</span>
+                {sortCol === ci && sortDir !== 'none' && (
+                  <span className="grid-sort-icon">
+                    {sortDir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />}
+                  </span>
+                )}
+                <span
+                  className="grid-resize-handle"
+                  data-testid={`resize-${c.name}`}
+                  onPointerDown={onResizeStart(ci)}
+                  onPointerMove={onResizeMove(ci)}
+                  onPointerUp={onResizeEnd(ci)}
+                />
               </div>
-            );
-          })}
+            ))}
+          </div>
+          {/* 筛选行（固定，同一 gridTemplateColumns；由结果工具栏开关控制） */}
+          {showFilter && (
+            <div className="grid-filter" style={{ gridTemplateColumns: gridTemplate }}>
+              {columns.map((c, ci) => (
+                <input
+                  key={`f-${c.name}`}
+                  className="grid-filter-input"
+                  placeholder="筛选…"
+                  aria-label={`筛选 ${c.name}`}
+                  value={filters[ci] ?? ''}
+                  onChange={(e) => setFilters((f) => ({ ...f, [ci]: e.target.value }))}
+                />
+              ))}
+            </div>
+          )}
+          {/* 数据体（虚拟滚动，同列宽；横向滚动交由外层容器，表头联动） */}
+          <div className="grid-body" ref={handleBodyRef} onScroll={handleBodyScroll}>
+            <div className="grid-spacer" style={{ height: visibleRows.length * ROW_HEIGHT, minWidth }}>
+              {rendered.map((row, ri) => {
+                const absIdx = start + ri;
+                return (
+                  <div
+                    key={absIdx}
+                    className="grid-row"
+                    style={{ top: absIdx * ROW_HEIGHT, gridTemplateColumns: gridTemplate, minWidth }}
+                  >
+                    {row.map((cell, ci) => {
+                      const isNull = cell === null || cell === undefined;
+                      const text = formatCell(cell);
+                      return (
+                        <div
+                          key={`${absIdx}-${ci}`}
+                          className={`grid-cell${isNull ? ' null-cell' : ''}`}
+                          title={text.length > 120 ? text : undefined}
+                          onDoubleClick={() => void copyCell(cell)}
+                        >
+                          {isNull ? 'NULL' : text}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
       {toast && <div className="grid-toast">{toast}</div>}

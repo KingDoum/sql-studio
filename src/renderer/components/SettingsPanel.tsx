@@ -110,7 +110,7 @@ export function SettingsPanel({
               className="settings-font-range"
               type="range"
               min={10}
-              max={18}
+              max={30}
               step={1}
               value={fontSize}
               onChange={(e) => onFontSizeChange(Number(e.target.value))}

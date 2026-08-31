@@ -46,6 +46,8 @@ interface WorkspaceState {
   activeTabId: string | null;
   /** 最近一次执行记录（任务 10 结果面板数据源）。 */
   execution: ExecutionRecord | null;
+  /** 结果历史（最多保留 MAX_RESULT_HISTORY 条，最新的在数组头；用于结果区切换查看旧结果）。 */
+  executionHistory: ExecutionRecord[];
   /** 当前执行中的查询（体验优化：停止按钮）。 */
   executing: ExecutingState | null;
 
@@ -63,14 +65,20 @@ interface WorkspaceState {
   /** 保存成功后标记干净并记录路径。 */
   markSaved(id: string, filePath: string): void;
   setExecution(rec: ExecutionRecord): void;
+  /** 从结果历史中选择一条展示（不新增历史）。 */
+  selectExecutionHistory(rec: ExecutionRecord): void;
   setExecuting(state: ExecutingState | null): void;
 }
+
+/** 结果历史最多保留条数（2026-08-31 新增）。 */
+export const MAX_RESULT_HISTORY = 10;
 
 export const useWorkspace = create<WorkspaceState>((set, get) => ({
   currentConnectionId: null,
   tabs: [],
   activeTabId: null,
   execution: null,
+  executionHistory: [],
   executing: null,
 
   setConnection: (id) => set({ currentConnectionId: id }),
@@ -128,7 +136,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }));
   },
 
-  setExecution: (rec) => set({ execution: rec, executing: null }),
+  setExecution: (rec) =>
+    set((s) => {
+      // 结果历史：最新在前，保留 MAX_RESULT_HISTORY 条（避免重复的连续同 SQL 也保留？不，都保留方便对比）
+      const history = [rec, ...s.executionHistory.filter((h) => h.executedAt !== rec.executedAt)].slice(0, MAX_RESULT_HISTORY);
+      return { execution: rec, executionHistory: history, executing: null };
+    }),
+
+  selectExecutionHistory: (rec) => set({ execution: rec }),
+
   setExecuting: (state) => set({ executing: state }),
 }));
 

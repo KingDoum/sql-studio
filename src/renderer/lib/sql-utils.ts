@@ -123,3 +123,67 @@ export function basename(filePath: string): string {
   const seg = filePath.split(/[\\/]/).filter(Boolean);
   return seg[seg.length - 1] ?? filePath;
 }
+
+/** 提取到的表引用（可带库名）。 */
+export interface SqlTableRef {
+  db?: string;
+  table: string;
+}
+
+/**
+ * 从一段 SQL 中提取所有被引用的表（含子查询内的表）。
+ *
+ * 识别方式：扫描 FROM / JOIN / INTO / UPDATE / TABLE 关键字之后的表标识符
+ * （支持 `db`.`table`、`db.table`、`table`、反引号包裹）。基于 scanCodeState
+ * 跳过字符串/注释，避免误匹配；子查询内的 FROM/JOIN 也会被识别（不依赖括号配对）。
+ *
+ * 用于：编辑器右侧"表字段导航"面板（识别当前 SQL 用到的表）。
+ */
+export function extractTablesFromSql(sql: string): SqlTableRef[] {
+  const states = scanCodeState(sql);
+  const out: SqlTableRef[] = [];
+  const seen = new Set<string>();
+  const re = /\b(FROM|JOIN|INTO|UPDATE|TABLE)\b/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(sql)) !== null) {
+    // 关键字必须处于代码态（不在字符串/注释/反引号内）
+    if (states[m.index] !== 0) continue;
+    let i = m.index + m[0].length;
+    while (i < sql.length && /\s/.test(sql[i])) i++;
+    // FROM ( 子查询：内部由后续扫描覆盖，跳过
+    if (sql[i] === '(') continue;
+    const ref = readSqlTableRef(sql, i);
+    if (ref) {
+      const key = `${ref.db ?? ''}.${ref.table}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        out.push(ref);
+      }
+    }
+  }
+  return out;
+}
+
+/** 从 pos 读取一个表引用（db.table / table / 反引号包裹），读取失败返回 null。 */
+function readSqlTableRef(sql: string, pos: number): SqlTableRef | null {
+  const identRe = /(?:`([^`]+)`|([\w$]+))/;
+  const m1 = identRe.exec(sql.slice(pos));
+  if (!m1 || m1.index !== 0) return null;
+  const first = m1[1] ?? m1[2];
+  let end = pos + m1[0].length;
+  // 支持 db.table
+  let j = end;
+  while (j < sql.length && /\s/.test(sql[j])) j++;
+  if (sql[j] === '.') {
+    j += 1;
+    while (j < sql.length && /\s/.test(sql[j])) j++;
+    const m2 = identRe.exec(sql.slice(j));
+    if (m2 && m2.index === 0) {
+      const second = m2[1] ?? m2[2];
+      return { db: first, table: second };
+    }
+    // db. 后面没有表名 → 不是完整引用
+    return null;
+  }
+  return { table: first };
+}

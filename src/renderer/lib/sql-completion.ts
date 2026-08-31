@@ -177,6 +177,20 @@ export function isDotEnding(prefix: string): boolean {
   return /\.\s*$/.test(prefix);
 }
 
+/**
+ * 解析「库名.部分词」结尾（点后正在输入表名，不以点结尾）。
+ * 例如 `from ods_yewu.bu` → { db: 'ods_yewu', partial: 'bu' }；
+ * `from ods_yewu.`（点结尾）→ partial 为空，由 isDotEnding 分支处理。
+ */
+export function matchQualifiedPartial(prefix: string): { db: string; partial: string } | null {
+  const m = /(?:`([^`]+)`|([\w$]+))\.\s*([\w$]*)$/.exec(prefix);
+  if (!m) return null;
+  const db = m[1] ?? m[2] ?? '';
+  const partial = m[3] ?? '';
+  if (!db) return null;
+  return { db, partial };
+}
+
 function dedupe(items: CompletionItem[]): CompletionItem[] {
   const seen = new Set<string>();
   const out: CompletionItem[] = [];
@@ -292,6 +306,19 @@ export class SchemaCompletionProvider implements CompletionProvider {
         if (this.snapshot.databases.includes(qualifier)) {
           return this.getTablesForDatabase(qualifier, base, word);
         }
+      }
+    }
+
+    // 1.5) 跨库「库名.部分词」：点后正在输入表名（如 from ods_yewu.bu）
+    {
+      const dbPartial = matchQualifiedPartial(prefix);
+      if (
+        dbPartial &&
+        dbPartial.db &&
+        this.snapshot.databases.includes(dbPartial.db) &&
+        !isDotEnding(prefix)
+      ) {
+        return this.getTablesForDatabase(dbPartial.db, base, dbPartial.partial || word);
       }
     }
 

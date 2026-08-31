@@ -7,6 +7,7 @@ import {
   getCurrentStatement,
   buildSelectSql,
   basename,
+  extractTablesFromSql,
 } from '@renderer/lib/sql-utils';
 
 describe('splitStatements', () => {
@@ -66,5 +67,55 @@ describe('basename', () => {
   it('取路径末段，兼容 \\ 与 /', () => {
     expect(basename('/a/b/c.sql')).toBe('c.sql');
     expect(basename('C:\\x\\y.sql')).toBe('y.sql');
+  });
+});
+
+describe('extractTablesFromSql（右侧导航用，含子查询）', () => {
+  it('提取 FROM/JOIN 的表（含库名前缀）', () => {
+    expect(extractTablesFromSql('SELECT * FROM users u JOIN orders o ON u.id=o.uid')).toEqual([
+      { table: 'users' },
+      { table: 'orders' },
+    ]);
+  });
+
+  it('支持 库.表 与反引号', () => {
+    expect(extractTablesFromSql('select a from ads_yewu.ads_parent_asin_daily_sales')).toEqual([
+      { db: 'ads_yewu', table: 'ads_parent_asin_daily_sales' },
+    ]);
+    expect(extractTablesFromSql('FROM `my db`.`order details`')).toEqual([
+      { db: 'my db', table: 'order details' },
+    ]);
+  });
+
+  it('识别 INTO / UPDATE / TABLE 后的表', () => {
+    expect(extractTablesFromSql('INSERT INTO t1 VALUES (1); UPDATE t2 SET a=1;')).toEqual([
+      { table: 't1' },
+      { table: 't2' },
+    ]);
+  });
+
+  it('识别子查询内的表', () => {
+    const sql = 'SELECT * FROM (SELECT id FROM users) u JOIN (SELECT uid FROM orders) o ON u.id=o.uid';
+    expect(extractTablesFromSql(sql)).toEqual([
+      { table: 'users' },
+      { table: 'orders' },
+    ]);
+  });
+
+  it('忽略字符串与注释内的 FROM（不误匹配）', () => {
+    const sql = "SELECT 'FROM fake' AS x -- FROM comment\n, '/* */' FROM real_table;";
+    expect(extractTablesFromSql(sql)).toEqual([{ table: 'real_table' }]);
+  });
+
+  it('去重（同一表多次引用只出现一次）', () => {
+    const sql = 'SELECT * FROM users u JOIN orders o ON u.id=o.uid WHERE u.id IN (SELECT user_id FROM users)';
+    expect(extractTablesFromSql(sql)).toEqual([
+      { table: 'users' },
+      { table: 'orders' },
+    ]);
+  });
+
+  it('db. 后无表名不返回无效引用', () => {
+    expect(extractTablesFromSql('SELECT * FROM ods_yewu.')).toEqual([]);
   });
 });

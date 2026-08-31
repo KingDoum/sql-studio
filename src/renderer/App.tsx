@@ -15,6 +15,7 @@ import { ObjectExplorer } from '@renderer/components/ObjectExplorer';
 import { EditorTabs } from '@renderer/components/EditorTabs';
 import { SqlEditor, type SqlEditorHandle } from '@renderer/components/SqlEditor';
 import { ResultTabs } from '@renderer/components/ResultTabs';
+import { TableFieldsPanel } from '@renderer/components/TableFieldsPanel';
 import { HistoryPanel } from '@renderer/components/HistoryPanel';
 import { FavoritesPanel } from '@renderer/components/FavoritesPanel';
 import { AiSettingsPanel } from '@renderer/components/AiSettingsPanel';
@@ -56,6 +57,7 @@ function App() {
   const [preview, setPreview] = useState<{ connectionId: string; database: string; table: string } | null>(null);
   const [favoriteName, setFavoriteName] = useState<string | null>(null);
   const [favoriteSql, setFavoriteSql] = useState('');
+  const [showTableFields, setShowTableFields] = useState(true);
   const sqlEditorRef = useRef<SqlEditorHandle | null>(null);
   // 启动时读取主题/调试模式设置并应用
   useEffect(() => {
@@ -70,7 +72,7 @@ function App() {
     });
     // 读取字体设置
     void window.sqlStudio['settings:get']({ key: 'fontSize' }).then((v) => {
-      if (v) { const n = parseInt(v, 10); if (n >= 10 && n <= 18) applyFontSize(n); }
+      if (v) { const n = parseInt(v, 10); if (n >= 10 && n <= 30) applyFontSize(n); }
     });
     void window.sqlStudio['settings:get']({ key: 'fontFamily' }).then((v) => {
       if (v) setFontFamily(v);
@@ -92,9 +94,9 @@ function App() {
     root.style.setProperty('--fs-xs', `${Math.max(size - 2, 9)}px`);
     root.style.setProperty('--fs-sm', `${Math.max(size - 1, 10)}px`);
     root.style.setProperty('--fs-base', `${size}px`);
-    root.style.setProperty('--fs-md', `${Math.min(size + 1, 20)}px`);
-    root.style.setProperty('--fs-lg', `${Math.min(size + 2, 22)}px`);
-    root.style.setProperty('--fs-xl', `${Math.min(size + 4, 24)}px`);
+    root.style.setProperty('--fs-md', `${Math.min(size + 1, 32)}px`);
+    root.style.setProperty('--fs-lg', `${Math.min(size + 2, 34)}px`);
+    root.style.setProperty('--fs-xl', `${Math.min(size + 4, 36)}px`);
     void window.sqlStudio['settings:set']({ key: 'fontSize', value: String(size) });
   };
 
@@ -340,6 +342,11 @@ function App() {
     sqlEditorRef.current?.insertTextAtCursor(`\`${db}\`.\`${table}\`.\`${column}\``);
   };
 
+  // 右侧表字段导航 → 插入纯字段名（不带库.表.前缀，2026-08-31 新增）
+  const handleInsertField = (field: string) => {
+    sqlEditorRef.current?.insertTextAtCursor(field);
+  };
+
   // 右键菜单「查看 DDL」→ schema:ddl 取 DDL 文本到新标签
   const handleDdlTable = async (db: string, table: string) => {
     if (!currentConnectionId) return;
@@ -452,25 +459,35 @@ function App() {
             onSaveAs={() => void handleSaveAs()}
           />
           {activeTab ? (
-            <div className="editor-pane">
-              <SqlEditor
-                ref={sqlEditorRef}
-                tab={activeTab}
+            <div className="editor-workbench">
+              <div className="editor-pane">
+                <SqlEditor
+                  ref={sqlEditorRef}
+                  tab={activeTab}
+                  connectionId={currentConnectionId}
+                  isExecuting={
+                    executing?.tabId === activeTab.id &&
+                    executing.connectionId === currentConnectionId
+                  }
+                  onSqlChange={(sql) => updateSql(activeTab.id, sql)}
+                  onExecute={(sql, db) => void handleExecute(sql, db)}
+                  onCancelQuery={handleCancelQuery}
+                  onOpenAiSettings={() => setShowAiSettings(true)}
+                  onSave={handleSave}
+                  aiSettingsVersion={aiSettingsVersion}
+                  theme={theme}
+                  fontSize={fontSize}
+                />
+                <ResultTabs />
+              </div>
+              <TableFieldsPanel
+                sql={activeTab.sql}
                 connectionId={currentConnectionId}
-                isExecuting={
-                  executing?.tabId === activeTab.id &&
-                  executing.connectionId === currentConnectionId
-                }
-                onSqlChange={(sql) => updateSql(activeTab.id, sql)}
-                onExecute={(sql, db) => void handleExecute(sql, db)}
-                onCancelQuery={handleCancelQuery}
-                onOpenAiSettings={() => setShowAiSettings(true)}
-                onSave={handleSave}
-                aiSettingsVersion={aiSettingsVersion}
-                theme={theme}
-                fontSize={fontSize}
+                database={currentDb}
+                onInsertField={handleInsertField}
+                open={showTableFields}
+                onToggle={() => setShowTableFields((v) => !v)}
               />
-              <ResultTabs />
             </div>
           ) : (
             <div className="workspace-placeholder">

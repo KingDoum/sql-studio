@@ -13,6 +13,7 @@ import {
   parseQualifiedDot,
   extractFromTables,
   lastKeyword,
+  matchQualifiedPartial,
   type SchemaSnapshot,
 } from '@renderer/lib/sql-completion';
 
@@ -294,6 +295,51 @@ describe('跨库补全（异步 loader）', () => {
     const p = new SchemaCompletionProvider(snapshot, loader);
     const items = await p.provideCompletions({ prefix: 'SELECT * FROM shop.', word: '' });
     expect(items.length).toBeGreaterThanOrEqual(0); // 至少关键字
+  });
+
+  it('S-需求6：跨库「库名.部分词」→ 从该库拉表并按部分词过滤', async () => {
+    const loader = {
+      tables: vi.fn(async () => [
+        { name: 'business_orders', type: 'table' as const, isView: false },
+        { name: 'product_ads', type: 'table' as const, isView: false },
+      ]),
+      columns: vi.fn(async () => []),
+    };
+    const snapshot = { connectionId: 'c1', database: 'app', databases: ['app', 'ods_yewu'], tables: [], columnsByTable: {} };
+    const p = new SchemaCompletionProvider(snapshot, loader);
+    // 输入 from ods_yewu.bu → 期望 ods_yewu 库中 bu 前缀/子串匹配的表
+    const items = await p.provideCompletions({ prefix: 'SELECT * FROM ods_yewu.bu', word: 'bu' });
+    expect(loader.tables).toHaveBeenCalledWith('ods_yewu');
+    expect(items.some((i) => i.label === 'business_orders')).toBe(true);
+    expect(items.some((i) => i.label === 'product_ads')).toBe(false);
+  });
+
+  it('S-需求6：跨库「库名.表名.」→ 从该库拉字段', async () => {
+    const loader = {
+      tables: vi.fn(async () => []),
+      columns: vi.fn(async () => [
+        { name: 'order_id', type: 'bigint', nullable: true, isPrimary: false, isUnique: false },
+        { name: 'amount', type: 'decimal', nullable: true, isPrimary: false, isUnique: false },
+      ]),
+    };
+    const snapshot = { connectionId: 'c1', database: 'app', databases: ['app', 'ods_yewu'], tables: [], columnsByTable: {} };
+    const p = new SchemaCompletionProvider(snapshot, loader);
+    const items = await p.provideCompletions({ prefix: 'SELECT * FROM ods_yewu.business_orders.', word: '' });
+    expect(loader.columns).toHaveBeenCalledWith('ods_yewu', 'business_orders');
+    expect(items.some((i) => i.label === 'order_id' && i.category === 'column')).toBe(true);
+    expect(items.some((i) => i.label === 'amount' && i.category === 'column')).toBe(true);
+  });
+});
+
+describe('matchQualifiedPartial（S-需求6 辅助）', () => {
+  it('解析 库名.部分词', () => {
+    expect(matchQualifiedPartial('from ods_yewu.bu')).toEqual({ db: 'ods_yewu', partial: 'bu' });
+  });
+  it('点结尾 partial 为空', () => {
+    expect(matchQualifiedPartial('from ods_yewu.')).toEqual({ db: 'ods_yewu', partial: '' });
+  });
+  it('无点号返回 null', () => {
+    expect(matchQualifiedPartial('from ods_yewu bu')).toBeNull();
   });
 });
 describe('别名补全（体验优化）', () => {

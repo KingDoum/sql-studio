@@ -27,7 +27,29 @@ const DEBOUNCE_MS = 400;
 /** 最小请求间隔：距上次实际请求不足此值则跳过，避免连续输入把 API 打到 429 限流。 */
 const MIN_REQUEST_INTERVAL_MS = 2500;
 const RATE_LIMIT_COOLDOWN_MS = 15_000;
+/** 渲染端请求超时：主进程 fetch 超时 15s，但若 IPC 或网络挂起，这里兜底不再等待并打日志。 */
+const REQUEST_TIMEOUT_MS = 12_000;
 const RATE_LIMIT_HINTS = ['过于频繁', '429', 'rate limit', 'rate_limit', 'Too Many Requests'];
+
+/** 带超时的 ai:complete：超时返回 { timeout: true }；错误返回 { error }；正常返回原始响应。 */
+type AiCallResult = { timeout: boolean; raw?: { suggestion: string }; error?: unknown };
+async function callAiCompleteWithTimeout(
+  args: { prefix: string; maxTokens: number },
+): Promise<AiCallResult> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (v: AiCallResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(v);
+    };
+    const timer = setTimeout(() => finish({ timeout: true }), REQUEST_TIMEOUT_MS);
+    getSqlStudio()['ai:complete'](args)
+      .then((raw) => finish({ timeout: false, raw: raw as { suggestion: string } }))
+      .catch((err: unknown) => finish({ timeout: false, error: err }));
+  });
+}
 
 function getSqlStudio() {
   return (window as unknown as Record<string, unknown>).sqlStudio as Record<string, (arg: unknown) => Promise<unknown>>;
@@ -138,14 +160,20 @@ export function createAiInlineProvider(
         lastRequestAt = Date.now();
         logAi('info', `行内补全触发: line=${position.lineNumber} col=${position.column} prefixLen=${prefix.length}`);
         const started = Date.now();
-        const raw = await getSqlStudio()['ai:complete']({
-          prefix,
-          maxTokens: 512,
-        });
+        const call = await callAiCompleteWithTimeout({ prefix, maxTokens: 512 });
         const elapsed = Date.now() - started;
 
         if (cancelled || mySeq !== seq) return { items: [] };
-        const resp = raw as { suggestion: string };
+
+        if (call.timeout) {
+          logAi('warn', `行内补全请求超时（>${REQUEST_TIMEOUT_MS / 1000}s），已放弃本次请求`, { elapsed });
+          return { items: [] };
+        }
+        if (call.error) {
+          // 交给下方 catch 统一处理限流/错误分类
+          throw call.error;
+        }
+        const resp = call.raw as { suggestion: string };
         const sugLen = resp.suggestion?.length ?? 0;
         logAi('info', `行内补全响应: 耗时=${elapsed}ms suggestionLen=${sugLen}`);
         if (!resp.suggestion) {

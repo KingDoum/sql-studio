@@ -4,6 +4,7 @@
  *   - 无执行 → 空提示；有错误 → 错误面板；有结果 → 多结果集标签 + ResultGrid。
  *   - 结果工具栏：结果集标签 / 行数 / 耗时 / 导出（ExportMenu）/ 筛选开关，分层展示。
  *   - 结果区高度可拖拽（上边界手柄），最小高度固定。
+ *   - 结果历史横条（2026-08-31 新增）：保留最近 MAX_RESULT_HISTORY 条执行结果，可点击切换查看。
  *
  * UI 重设计（实施规范 §4.6 / §5.7）：
  *  - 导出动作放在结果工具栏，不占用每行空间。
@@ -11,7 +12,7 @@
  *  - 空结果、加载、错误、截断和成功状态分别设计。
  */
 import { useRef, useState } from 'react';
-import { Filter, FilterX, AlertTriangle } from 'lucide-react';
+import { Filter, FilterX, AlertTriangle, Clock } from 'lucide-react';
 import { useWorkspace } from '@renderer/store/workspace';
 import { ResultGrid } from './ResultGrid';
 import { ExportMenu } from './ExportMenu';
@@ -21,6 +22,8 @@ const MAX_PANEL_H_RATIO = 0.8;
 
 export function ResultTabs() {
   const execution = useWorkspace((s) => s.execution);
+  const executionHistory = useWorkspace((s) => s.executionHistory);
+  const selectExecutionHistory = useWorkspace((s) => s.selectExecutionHistory);
   const [activeSet, setActiveSet] = useState(0);
   /** 筛选行开关（默认展开）。 */
   const [showFilter, setShowFilter] = useState(true);
@@ -55,6 +58,12 @@ export function ResultTabs() {
     (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
   };
 
+  /** 历史 SQL 摘要（首行非空、去注释）。 */
+  const sqlSummary = (sql: string): string => {
+    const line = sql.split('\n').map((l) => l.trim()).find((l) => l && !l.startsWith('--')) ?? '';
+    return line.length > 40 ? line.slice(0, 40) + '…' : line;
+  };
+
   return (
     <div
       className="result-panel"
@@ -70,6 +79,29 @@ export function ResultTabs() {
         onPointerMove={onResizeMove}
         onPointerUp={onResizeEnd}
       />
+
+      {/* 结果历史横条（保留最近 10 条执行结果，点击切换） */}
+      {executionHistory.length > 1 && (
+        <div className="result-history-bar">
+          <span className="result-history-label"><Clock size={12} /> 结果历史</span>
+          <div className="result-history-list">
+            {executionHistory.map((h, i) => (
+              <button
+                key={h.executedAt}
+                className={`result-history-item${execution?.executedAt === h.executedAt ? ' active' : ''}`}
+                title={h.sql}
+                onClick={() => selectExecutionHistory(h)}
+              >
+                <span className="result-history-idx">{executionHistory.length - i}</span>
+                <span className="result-history-sql">{sqlSummary(h.sql)}</span>
+                <span className="result-history-meta">
+                  {h.result ? `${h.result.totalElapsedMs}ms` : h.error ? '失败' : '…'}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {!execution && (
         <div className="result-empty">

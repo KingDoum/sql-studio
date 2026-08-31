@@ -114,6 +114,22 @@ describe('createAiInlineProvider 限流保护', () => {
     expect(mock.calls.length).toBe(2);
     expect(res.items).toHaveLength(1);
   });
+
+  it('S-需求2：请求超过 12s 超时则打日志并返回空（不永久挂起）', async () => {
+    const mock = makeSqlStudioMock();
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // 永不 resolve：模拟 IPC/网络挂起
+    mock.setImpl(() => new Promise(() => {}));
+    const provider = createAiInlineProvider({ enabled: true, config: CONFIG });
+
+    const p = provider.provideInlineCompletions(modelStub('SELECT * FROM us', 18), { lineNumber: 1, column: 18 }, null, null);
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_PLUS());
+    // 触发超时（12s）
+    await vi.advanceTimersByTimeAsync(13_000);
+    const res = await p;
+    expect(res.items).toHaveLength(0);
+    expect(consoleWarn).toHaveBeenCalledWith(expect.stringContaining('超时'));
+  });
 });
 
 /** 防抖窗口 + 余量（让定时器跑完）。 */

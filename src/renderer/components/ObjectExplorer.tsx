@@ -7,8 +7,8 @@
  * （带懒加载的 tables），符合类型唯一来源（铁律 R5）——不复制主进程类型，
  * 仅组合共享类型 TableMeta/ColumnMeta。
  */
-import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, Database, Table2, Eye, KeyRound, RefreshCw, PlayCircle, AlertTriangle } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown, ChevronRight, Database, Table2, Eye, KeyRound, RefreshCw, PlayCircle, AlertTriangle, Search, X } from 'lucide-react';
 import type { ColumnMeta, TableMeta } from '@shared/types';
 
 export interface ObjectExplorerProps {
@@ -27,13 +27,19 @@ type TableNode = TableMeta & { columns?: ColumnMeta[]; loadError?: string };
 /** 库节点：库名 + 懒加载的表列表。 */
 type DbNode = { name: string; tables?: TableNode[]; loadError?: string };
 
+/** 筛选关键词长度达到该值才触发"预载所有库的表"跨库搜索（避免空搜索打太多请求）。 */
+const SEARCH_LOAD_THRESHOLD = 2;
+
 export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable, onInsertColumn, onDdlTable }: ObjectExplorerProps) {
   const [databases, setDatabases] = useState<DbNode[]>([]);
   const [expandedDb, setExpandedDb] = useState<string | null>(null);
   const [expandedTable, setExpandedTable] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [filter, setFilter] = useState('');
   const requestIdRef = useRef(0);
+  /** 是否已为当前关键词触发过全库表预载（避免重复请求）。 */
+  const preloadedForRef = useRef('');
   /** 右键菜单状态。 */
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; db: string; table: string } | null>(null);
 
@@ -60,6 +66,39 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable, onIn
     void loadDatabases();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connectionId]);
+
+  /** 确保某库已加载表（返回是否已就绪）。 */
+  const ensureTablesLoaded = async (db: string): Promise<boolean> => {
+    const node = databases.find((d) => d.name === db);
+    if (node?.tables) return true;
+    try {
+      const tables = await window.sqlStudio['schema:tables']({ connectionId, database: db });
+      const reqId = requestIdRef.current;
+      setDatabases((dbs) => dbs.map((d) => (d.name === db ? { ...d, tables, loadError: undefined } : d)));
+      void reqId;
+      return true;
+    } catch {
+      setDatabases((dbs) =>
+        dbs.map((d) => (d.name === db ? { ...d, loadError: '加载表失败' } : d)),
+      );
+      return false;
+    }
+  };
+
+  /** 筛选关键词变化：长度达标时预载所有库的表（便于跨库模糊搜索）。 */
+  useEffect(() => {
+    const kw = filter.trim();
+    if (kw.length < SEARCH_LOAD_THRESHOLD) {
+      preloadedForRef.current = '';
+      return;
+    }
+    if (preloadedForRef.current === kw) return;
+    preloadedForRef.current = kw;
+    // 对所有还没加载表的库并行拉表
+    const pending = databases.filter((d) => !d.tables).map((d) => ensureTablesLoaded(d.name));
+    if (pending.length) void Promise.all(pending);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter, databases.length, connectionId]);
 
   const loadTables = async (db: string) => {
     const reqId = ++requestIdRef.current;
@@ -130,6 +169,24 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable, onIn
 
   const closeContextMenu = () => setContextMenu(null);
 
+  /** 按关键词过滤：库名或表名模糊匹配（大小写不敏感）。 */
+  const kw = filter.trim().toLowerCase();
+  const filteredDatabases: DbNode[] = useMemo(() => {
+    if (!kw) return databases;
+    const out: DbNode[] = [];
+    for (const db of databases) {
+      const dbMatch = db.name.toLowerCase().includes(kw);
+      const tables = db.tables?.filter((t) => t.name.toLowerCase().includes(kw));
+      const matched = dbMatch || (tables && tables.length > 0);
+      if (!matched) continue;
+      out.push({ ...db, tables: dbMatch ? db.tables : tables });
+    }
+    return out;
+  }, [databases, kw]);
+
+  /** 是否因筛选而"虚拟展开"（命中即展开，无需手动点库）。 */
+  const isFilterExpanded = (dbName: string): boolean => !!kw && (expandedDb === dbName || kw.length >= SEARCH_LOAD_THRESHOLD);
+
   if (error) {
     return (
       <div className="explorer error">
@@ -147,8 +204,24 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable, onIn
         <h3>对象浏览器</h3>
         {loading && <span className="explorer-loading">加载中…</span>}
       </div>
+      {/* 筛选框（2026-08-31 新增：表名+库名模糊匹配） */}
+      <div className="explorer-filter">
+        <Search size={13} className="explorer-filter-icon" />
+        <input
+          className="explorer-filter-input"
+          placeholder="搜索表名 / 库名…"
+          aria-label="搜索表或库"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+        />
+        {filter && (
+          <button className="explorer-filter-clear" onClick={() => setFilter('')} title="清空">
+            <X size={12} />
+          </button>
+        )}
+      </div>
       <ul className="db-list">
-        {databases.map((dbNode) => (
+        {filteredDatabases.map((dbNode) => (
           <li key={dbNode.name}>
             <div
               className={`db-item${expandedDb === dbNode.name ? ' expanded' : ''}`}
@@ -161,6 +234,7 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable, onIn
               </span>
               <Database size={14} className="db-icon" />
               <span className="db-name">{dbNode.name}</span>
+              {kw && !dbNode.tables && <span className="explorer-filter-hint">（搜索中…）</span>}
             </div>
             {dbNode.loadError && (
               <div className="explorer-node-error" title={dbNode.loadError}>
@@ -170,7 +244,7 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable, onIn
                 </button>
               </div>
             )}
-            {expandedDb === dbNode.name && dbNode.tables && (
+            {(expandedDb === dbNode.name || isFilterExpanded(dbNode.name)) && dbNode.tables && (
               <ul className="table-list">
                 {dbNode.tables.map((t) => (
                   <li key={t.name}>
@@ -234,6 +308,9 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable, onIn
         ))}
         {databases.length === 0 && !loading && !error && (
           <li className="explorer-empty">该连接无可见数据库</li>
+        )}
+        {kw && filteredDatabases.length === 0 && !loading && (
+          <li className="explorer-empty">未找到匹配「{filter}」的库或表</li>
         )}
       </ul>
       {contextMenu && (

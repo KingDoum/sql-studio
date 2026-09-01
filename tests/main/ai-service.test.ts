@@ -282,3 +282,82 @@ describe('AiService · 日志脱敏', () => {
     }
   });
 });
+
+describe('AiService · 响应元信息 meta（阶段 D：区分模型空返回与客户端限流）', () => {
+  it('FIM 返回非空 text 时携带 meta（choiceCount=1）', async () => {
+    const { fetchFn } = makeFetchMock({ choices: [{ text: 'ers', finish_reason: 'stop' }] });
+    const svc = new AiService(fetchFn);
+    const res = await svc.complete(REQ, FIM_CONFIG);
+    expect(res.suggestion).toBe('ers');
+    expect(res.meta?.choiceCount).toBe(1);
+    expect(res.meta?.finishReason).toBe('stop');
+  });
+
+  it('FIM 返回空 text（suggestionLen=0）→ meta.choiceCount=1（有候选但文本空，非客户端限流）', async () => {
+    const { fetchFn } = makeFetchMock({ choices: [{ text: '   ', finish_reason: 'stop' }] });
+    const svc = new AiService(fetchFn);
+    const res = await svc.complete(REQ, FIM_CONFIG);
+    expect(res.suggestion).toBe('');
+    expect(res.meta?.choiceCount).toBe(1);
+  });
+
+  it('choices 为空 → meta.choiceCount=0（服务端无候选）', async () => {
+    const { fetchFn } = makeFetchMock({ choices: [] });
+    const svc = new AiService(fetchFn);
+    const res = await svc.complete(REQ, FIM_CONFIG);
+    expect(res.suggestion).toBe('');
+    expect(res.meta?.choiceCount).toBe(0);
+  });
+
+  it('choices 缺失 → meta.choiceCount=0', async () => {
+    const { fetchFn } = makeFetchMock({});
+    const svc = new AiService(fetchFn);
+    const res = await svc.complete(REQ, FIM_CONFIG);
+    expect(res.suggestion).toBe('');
+    expect(res.meta?.choiceCount).toBe(0);
+  });
+
+  it('返回 finish_reason 与 usage token 数（服务端提供时）', async () => {
+    const { fetchFn } = makeFetchMock({
+      choices: [{ text: 'ers', finish_reason: 'length' }],
+      usage: { prompt_tokens: 12, completion_tokens: 3, total_tokens: 15 },
+    });
+    const svc = new AiService(fetchFn);
+    const res = await svc.complete(REQ, FIM_CONFIG);
+    expect(res.meta?.finishReason).toBe('length');
+    expect(res.meta?.usage).toEqual({
+      promptTokens: 12,
+      completionTokens: 3,
+      totalTokens: 15,
+    });
+  });
+
+  it('meta 不包含 prompt/suffix/SQL/API Key（无敏感数据）', async () => {
+    const { fetchFn } = makeFetchMock({ choices: [{ text: 'ers', finish_reason: 'stop' }], usage: { total_tokens: 5 } });
+    const svc = new AiService(fetchFn);
+    const res = await svc.complete(REQ, FIM_CONFIG);
+    const meta = res.meta as Record<string, unknown>;
+    expect(meta.apiKey).toBeUndefined();
+    expect(meta.prompt).toBeUndefined();
+    expect(meta.suffix).toBeUndefined();
+    expect(meta.sql).toBeUndefined();
+    expect(JSON.stringify(meta)).not.toContain('sk-test');
+  });
+
+  it('429 错误日志含状态码与耗时，但不输出响应体敏感内容', async () => {
+    const mock = makeFetchMock({ error: 'rate limit hit with secret sk-xxx' });
+    mock.setStatus(429);
+    const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const svc = new AiService(mock.fetchFn);
+    try {
+      await expect(svc.complete(REQ, FIM_CONFIG)).rejects.toThrow('请求过于频繁');
+      // 先收集日志，再恢复 spy
+      const logs = spy.mock.calls.map((c) => c.map(String).join(' ')).join(' | ');
+      // 响应失败日志记录 status 与 elapsedMs
+      expect(logs).toContain('status=429');
+      expect(logs).toContain('elapsedMs=');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});

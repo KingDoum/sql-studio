@@ -418,6 +418,24 @@ export interface CompletionItem {
  */
 export type AiProtocol = 'deepseek-fim' | 'openai-chat';
 
+/**
+ * AI 请求策略（限流参数，Main 与 Renderer 共用唯一默认值/归一化逻辑）。
+ *
+ * 统一默认值、允许范围与归一化在 `src/shared/ai-protocol.ts`
+ * （`DEFAULT_AI_RATE_LIMIT_CONFIG` / `normalizeAiRateLimitConfig`）。
+ * 这些参数只控制「客户端请求频率」，不控制输出长度（maxTokens 单独钳制）。
+ */
+export interface AiRateLimitConfig {
+  /** 输入防抖（ms）：停止输入多久后才发起请求。默认 400，范围 150-3000。 */
+  debounceMs: number;
+  /** 最小请求间隔（ms）：两次实际请求之间的最短间隔。默认 2500，范围 500-30000。 */
+  minRequestIntervalMs: number;
+  /** 限流冷却时间（ms）：收到 429/服务过载后的暂停时间。默认 15000，范围 1000-120000。 */
+  rateLimitCooldownMs: number;
+  /** 请求超时（ms）：Renderer 等待 AI IPC 结果的最长时间。默认 12000，范围 3000-60000。 */
+  requestTimeoutMs: number;
+}
+
 /** AI 配置（Main 内部使用，含明文 API Key；绝不经普通 IPC 返回 Renderer）。 */
 export interface AiConfig {
   /** 是否启用 AI 补全。 */
@@ -435,6 +453,11 @@ export interface AiConfig {
    * 补全协议。可选：兼容旧配置（无 protocol 时按 baseUrl 含 /beta 推断为 FIM，否则 Chat）。
    */
   protocol?: AiProtocol;
+  /**
+   * 请求策略（可选）。旧配置没有该字段时，读取端自动补 `DEFAULT_AI_RATE_LIMIT_CONFIG`；
+   * 保存端会先归一化再落库，保证越界/非数字值不会进入运行时配置。
+   */
+  rateLimit?: AiRateLimitConfig;
 }
 
 /**
@@ -452,6 +475,8 @@ export interface AiPublicConfig {
   protocol?: AiProtocol;
   /** API Key 是否已配置（true=已保存过 Key，供 UI 显示"已配置"而非泄露内容）。 */
   apiKeyConfigured: boolean;
+  /** 请求策略（归一化后的安全值，不含任何敏感数据）。 */
+  rateLimit: AiRateLimitConfig;
 }
 
 /** AI 补全请求（V2 使用，`ai.complete` channel 占位）。 */
@@ -465,10 +490,34 @@ export interface AiCompletionRequest {
 export interface AiCompletionResponse {
   /** 行内补全建议文本（灰色预测）。 */
   suggestion: string;
+  /**
+   * 非敏感响应元信息（阶段 D：区分「模型空返回」与「客户端限流」）。
+   * 只包含 choice 数量、finish reason、usage token 数等诊断字段；
+   * 绝不包含 prompt/suffix/SQL/API Key/Authorization。
+   * 可选：旧调用方忽略该字段，不影响契约。
+   */
+  meta?: {
+    /** choices 数组长度（0 = 服务端未返回任何候选）。 */
+    choiceCount: number;
+    /** 第一个 choice 的 finish_reason（如 stop/length/null）。 */
+    finishReason?: string;
+    /** usage token 数（服务端提供时才存在）。 */
+    usage?: {
+      promptTokens?: number;
+      completionTokens?: number;
+      totalTokens?: number;
+    };
+  };
 }
 
 // ─────────────────────────────────────────────────────────────
 // 主题
 // ─────────────────────────────────────────────────────────────
 
-export type ThemeMode = 'dark' | 'light';
+/**
+ * 界面主题模式。
+ * - `dark`：深色（默认）
+ * - `light`：白天
+ * - `titanium`：钛灰（苹果式克制中性灰，独立令牌，2026-09-01 外观升级新增）
+ */
+export type ThemeMode = 'dark' | 'light' | 'titanium';

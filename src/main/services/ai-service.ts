@@ -1,5 +1,5 @@
 /**
- * AI 服务（V2：OpenAI 兼容 API 调用，阶段 1：DeepSeek FIM 协议修复）。
+ * AI 服务（V2：OpenAI 兼容 API 调用，阶段 1：DeepSeek FIM 协议修复；阶段 D：响应元信息）。
  *
  * 职责：按 `protocol` 把补全请求发到正确的接口：
  *  - `deepseek-fim` → `https://<base>/beta/completions`，请求体 {model, prompt, suffix, max_tokens, temperature, stream:false}，
@@ -10,7 +10,11 @@
  * 依赖注入：构造函数注入 fetch 函数（默认 globalThis.fetch，单测可 mock）。
  * 不依赖 Electron 环境，可在 Node 或 Electron 主进程复用。
  *
- * 铁律：日志不输出 API Key、完整 prefix/suffix/SQL 与 Authorization header。
+ * 阶段 D（区分「模型空返回」与「客户端限流」）：
+ *  - 解析响应时记录非敏感元信息（choiceCount / finishReason / usage token 数）；
+ *  - 返回 `meta` 给 Renderer，让 suggestionLen=0 可判断是模型空返回（provider_empty）
+ *    而非客户端跳过/限流；
+ *  - 铁律：日志与 meta 不输出 API Key、完整 prefix/suffix/SQL 与 Authorization header。
  */
 import type { AiConfig, AiCompletionRequest, AiCompletionResponse } from '@shared/types';
 import {
@@ -66,6 +70,7 @@ export class AiService {
         'suffixLen:', (req.suffix ?? '').length,
       );
       const body = buildBody(req, config, protocol, maxTokens);
+      const started = Date.now();
       const resp = await this.fetchFn(url, {
         method: 'POST',
         headers: {
@@ -75,20 +80,47 @@ export class AiService {
         body: JSON.stringify(body),
         signal: mergedSignal,
       });
+      const elapsed = Date.now() - started;
 
       if (!resp.ok) {
+        // 非 2xx：记录状态码 + 安全原因（不输出响应体中的敏感内容）
+        console.log(`[AI] 响应失败: status=${resp.status} protocol=${protocol} elapsedMs=${elapsed}`);
         throw normalizeError(resp.status, await resp.text().catch(() => ''));
       }
 
-      console.log('[AI] 响应状态:', resp.status, 'protocol:', protocol);
       const data = (await resp.json()) as {
-        choices?: Array<{ text?: string; message?: { content?: string } }>;
+        choices?: Array<{ text?: string; message?: { content?: string }; finish_reason?: string | null }>;
+        usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
       };
+      const choices = Array.isArray(data?.choices) ? data.choices : [];
+      const first = choices[0];
       const suggestion =
         protocol === 'deepseek-fim'
-          ? data?.choices?.[0]?.text?.trim() ?? ''
-          : data?.choices?.[0]?.message?.content?.trim() ?? '';
-      return { suggestion };
+          ? first?.text?.trim() ?? ''
+          : first?.message?.content?.trim() ?? '';
+      // 阶段 D：记录非敏感元信息（choice 数 / finish_reason / usage token 数）
+      const meta: NonNullable<AiCompletionResponse['meta']> = {
+        choiceCount: choices.length,
+        finishReason: typeof first?.finish_reason === 'string' ? first.finish_reason : undefined,
+        usage:
+          data?.usage && typeof data.usage === 'object'
+            ? {
+                promptTokens: data.usage.prompt_tokens,
+                completionTokens: data.usage.completion_tokens,
+                totalTokens: data.usage.total_tokens,
+              }
+            : undefined,
+      };
+      console.log(
+        '[AI] 响应状态:', resp.status,
+        'protocol:', protocol,
+        'elapsedMs:', elapsed,
+        'suggestionLen:', suggestion.length,
+        'choiceCount:', meta.choiceCount,
+        'finishReason:', meta.finishReason ?? 'null',
+        'usage:', meta.usage ? `${meta.usage.promptTokens ?? '-'}/${meta.usage.completionTokens ?? '-'}/${meta.usage.totalTokens ?? '-'}` : 'n/a',
+      );
+      return { suggestion, meta };
     } finally {
       clearTimeout(timeout);
     }

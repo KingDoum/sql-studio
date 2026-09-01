@@ -16,6 +16,12 @@ const CONFIG: AiPublicConfig = {
   apiKeyConfigured: true,
   enabled: true,
   protocol: 'deepseek-fim',
+  rateLimit: {
+    debounceMs: 400,
+    minRequestIntervalMs: 2500,
+    rateLimitCooldownMs: 15_000,
+    requestTimeoutMs: 12_000,
+  },
 };
 
 /** 构造 sqlStudio mock，记录 ai:complete 调用（含 suffix）。 */
@@ -321,3 +327,268 @@ describe('fetchAiConfig', () => {
 function DEBOUNCE_PLUS(): number {
   return 500;
 }
+
+/** 构造自定义限流参数的 public 配置。 */
+function customConfig(overrides: Partial<typeof CONFIG['rateLimit']> = {}) {
+  return {
+    ...CONFIG,
+    rateLimit: { ...CONFIG.rateLimit, ...overrides },
+  };
+}
+
+describe('createAiInlineProvider · 可调限流参数（阶段 C）', () => {
+  it('自定义防抖值生效（不是写死的 400ms）', async () => {
+    const mock = makeSqlStudioMock();
+    // 自定义防抖 800ms：默认 400ms 时不应发请求
+    const provider = createAiInlineProvider({ enabled: true, config: customConfig({ debounceMs: 800 }) });
+    const p = provider.provideInlineCompletions(
+      modelStub('SELECT * FROM us', { lineNumber: 1, column: 16 }),
+      { lineNumber: 1, column: 16 }, null, null,
+    );
+    // 前进 400ms（旧写死值）：不应发请求
+    await vi.advanceTimersByTimeAsync(400);
+    expect(mock.calls).toHaveLength(0);
+    // 再前进 400ms（累计 800）：请求发出
+    await vi.advanceTimersByTimeAsync(401);
+    await p;
+    expect(mock.calls).toHaveLength(1);
+  });
+
+  it('自定义最小请求间隔生效（更短的间隔也会被拦截）', async () => {
+    const mock = makeSqlStudioMock();
+    // 初始时间设为较大值：保证第一次请求不被最小间隔误拦截
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(10_000);
+    // 自定义最小间隔 1000ms（比默认 2500 更短）
+    const provider = createAiInlineProvider({ enabled: true, config: customConfig({ minRequestIntervalMs: 1000 }) });
+    const p1 = provider.provideInlineCompletions(
+      modelStub('SELECT * FROM us', { lineNumber: 1, column: 16 }),
+      { lineNumber: 1, column: 16 }, null, null,
+    );
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_PLUS());
+    await p1;
+    expect(mock.calls).toHaveLength(1);
+
+    // 500ms 后（< 1000ms）：应被最小间隔拦截，不发新请求
+    nowSpy.mockReturnValue(10_500);
+    const p2 = provider.provideInlineCompletions(
+      modelStub('SELECT * FROM users', { lineNumber: 1, column: 20 }),
+      { lineNumber: 1, column: 20 }, null, null,
+    );
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_PLUS());
+    await p2;
+    expect(mock.calls).toHaveLength(1);
+
+    // 1200ms 后（> 1000ms）：放行
+    nowSpy.mockReturnValue(11_200);
+    const p3 = provider.provideInlineCompletions(
+      modelStub('SELECT * FROM user_list', { lineNumber: 1, column: 22 }),
+      { lineNumber: 1, column: 22 }, null, null,
+    );
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_PLUS());
+    await p3;
+    expect(mock.calls).toHaveLength(2);
+    nowSpy.mockRestore();
+  });
+
+  it('自定义冷却时间生效（更短的冷却后立即恢复）', async () => {
+    const mock = makeSqlStudioMock();
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // 自定义冷却 2000ms（默认 15000）
+    const provider = createAiInlineProvider({ enabled: true, config: customConfig({ rateLimitCooldownMs: 2000 }) });
+    let fail = true;
+    mock.setImpl(async () => {
+      if (fail) throw new Error('请求过于频繁，请稍后重试');
+      return { suggestion: 'SELECT' };
+    });
+
+    // 触发 429 → 进入冷却（2000ms）
+    const p1 = provider.provideInlineCompletions(
+      modelStub('SELECT * FROM us', { lineNumber: 1, column: 16 }),
+      { lineNumber: 1, column: 16 }, null, null,
+    );
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_PLUS());
+    await p1;
+    expect(mock.calls).toHaveLength(1);
+
+    // 1000ms 后（冷却中，默认 15000 仍在冷却，但自定义 2000 也仍在）：不发
+    fail = false;
+    await vi.advanceTimersByTimeAsync(1000);
+    const p2 = provider.provideInlineCompletions(
+      modelStub('SELECT * FROM us', { lineNumber: 1, column: 16 }),
+      { lineNumber: 1, column: 16 }, null, null,
+    );
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_PLUS());
+    await p2;
+    expect(mock.calls).toHaveLength(1);
+
+    // 再过 1500ms（累计 2500 > 2000）：冷却结束，请求恢复
+    await vi.advanceTimersByTimeAsync(1500);
+    const p3 = provider.provideInlineCompletions(
+      modelStub('SELECT * FROM us', { lineNumber: 1, column: 16 }),
+      { lineNumber: 1, column: 16 }, null, null,
+    );
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_PLUS());
+    const res = await p3;
+    expect(mock.calls).toHaveLength(2);
+    expect(res.items).toHaveLength(1);
+  });
+
+  it('自定义超时生效（更短的超时提前放弃）', async () => {
+    const mock = makeSqlStudioMock();
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mock.setImpl(() => new Promise(() => {})); // 永不返回
+    // 自定义超时 3000ms（默认 12000）
+    const provider = createAiInlineProvider({ enabled: true, config: customConfig({ requestTimeoutMs: 3000 }) });
+    const p = provider.provideInlineCompletions(
+      modelStub('SELECT * FROM us', { lineNumber: 1, column: 16 }),
+      { lineNumber: 1, column: 16 }, null, null,
+    );
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_PLUS());
+    // 4000ms（> 3000 但 < 12000 默认）：已超时
+    await vi.advanceTimersByTimeAsync(4000);
+    const res = await p;
+    expect(res.items).toHaveLength(0);
+    expect(consoleWarn.mock.calls.some((c) => String(c[0]).includes('timeout'))).toBe(true);
+  });
+
+  it('修改设置后新 provider 使用新值，旧 provider 不再发起', async () => {
+    const mock = makeSqlStudioMock();
+    // 旧 provider：防抖 400ms
+    const oldProvider = createAiInlineProvider({ enabled: true, config: CONFIG });
+    // 新 provider（设置变化后重建）：防抖 900ms
+    const newProvider = createAiInlineProvider({ enabled: true, config: customConfig({ debounceMs: 900 }) });
+
+    // 旧 provider 已被 dispose → 不再发起请求
+    oldProvider.dispose();
+    const pOld = oldProvider.provideInlineCompletions(
+      modelStub('SELECT * FROM us', { lineNumber: 1, column: 16 }),
+      { lineNumber: 1, column: 16 }, null, null,
+    );
+    await vi.advanceTimersByTimeAsync(1200);
+    await pOld;
+    expect(mock.calls).toHaveLength(0);
+
+    // 新 provider：900ms 防抖；400ms 时不应发（旧写死值），900ms 后发出
+    const pNew = newProvider.provideInlineCompletions(
+      modelStub('SELECT * FROM us', { lineNumber: 1, column: 16 }),
+      { lineNumber: 1, column: 16 }, null, null,
+    );
+    await vi.advanceTimersByTimeAsync(400);
+    expect(mock.calls).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(501);
+    await pNew;
+    expect(mock.calls).toHaveLength(1);
+  });
+
+  it('旧 provider 不再采纳结果（dispose 后返回的响应被丢弃）', async () => {
+    const mock = makeSqlStudioMock();
+    let resolveReq: ((v: { suggestion: string }) => void) | undefined;
+    mock.setImpl(() => new Promise((r) => { resolveReq = r; }));
+    const provider = createAiInlineProvider({ enabled: true, config: CONFIG });
+
+    const p = provider.provideInlineCompletions(
+      modelStub('SELECT * FROM us', { lineNumber: 1, column: 16 }),
+      { lineNumber: 1, column: 16 }, null, null,
+    );
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_PLUS());
+    expect(mock.calls).toHaveLength(1);
+
+    // 请求在途时 dispose 旧 provider
+    provider.dispose();
+    resolveReq?.({ suggestion: '旧结果' });
+    const res = await p;
+    // dispose 后即使响应返回也不采纳
+    expect(res.items).toHaveLength(0);
+  });
+
+  it('限流跳过日志不会无限刷屏（1s 节流）', async () => {
+    const mock = makeSqlStudioMock();
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const consoleInfo = vi.spyOn(console, 'info').mockImplementation(() => {});
+    mock.setImpl(async () => { throw new Error('请求过于频繁，请稍后重试'); });
+    const provider = createAiInlineProvider({ enabled: true, config: CONFIG });
+
+    // 第一次触发 429 → 进入冷却
+    const p1 = provider.provideInlineCompletions(
+      modelStub('SELECT * FROM us', { lineNumber: 1, column: 16 }),
+      { lineNumber: 1, column: 16 }, null, null,
+    );
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_PLUS());
+    await p1;
+
+    // 冷却期内连续触发多次（每次都不发请求、打 cooldown 跳过日志）
+    for (let i = 0; i < 10; i++) {
+      const p = provider.provideInlineCompletions(
+        modelStub('SELECT * FROM us', { lineNumber: 1, column: 16 }),
+        { lineNumber: 1, column: 16 }, null, null,
+      );
+      await p; // cooldown 分支立即返回
+    }
+    // 跳过日志被节流：同一秒内 cooldown 跳过日志至多 1-2 条
+    const skipLogs = consoleInfo.mock.calls.filter((c) => String(c[0]).includes('跳过 AI 补全'));
+    expect(skipLogs.length).toBeLessThanOrEqual(2);
+  });
+
+  it('初始化日志包含四个策略值，但不输出 API Key / SQL 内容', async () => {
+    const mock = makeSqlStudioMock();
+    const consoleInfo = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const provider = createAiInlineProvider({ enabled: true, config: customConfig({ debounceMs: 500, minRequestIntervalMs: 1000, rateLimitCooldownMs: 3000, requestTimeoutMs: 4000 }) });
+    const p = provider.provideInlineCompletions(
+      modelStub('SELECT * FROM us', { lineNumber: 1, column: 16 }),
+      { lineNumber: 1, column: 16 }, null, null,
+    );
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_PLUS());
+    await p;
+
+    const initLog = consoleInfo.mock.calls.map((c) => String(c[0])).find((s) => s.includes('provider 初始化'));
+    expect(initLog).toBeTruthy();
+    expect(initLog).toContain('debounceMs:500');
+    expect(initLog).toContain('minRequestIntervalMs:1000');
+    expect(initLog).toContain('rateLimitCooldownMs:3000');
+    expect(initLog).toContain('requestTimeoutMs:4000');
+    // 不含 API Key 与完整 SQL
+    expect(initLog).not.toContain('sk-');
+    expect(initLog).not.toContain('SELECT');
+  });
+});
+
+describe('createAiInlineProvider · 空建议与限流区分（阶段 D）', () => {
+  it('服务端返回空建议（suggestionLen=0）→ 日志为 provider_empty，不是限流/跳过', async () => {
+    const mock = makeSqlStudioMock();
+    const consoleInfo = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mock.setImpl(async () => ({ suggestion: '' }));
+    const provider = createAiInlineProvider({ enabled: true, config: CONFIG });
+
+    const p = provider.provideInlineCompletions(
+      modelStub('SELECT * FROM us', { lineNumber: 1, column: 16 }),
+      { lineNumber: 1, column: 16 }, null, null,
+    );
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_PLUS());
+    const res = await p;
+    expect(res.items).toHaveLength(0);
+    expect(mock.calls).toHaveLength(1); // 请求确实发出了（服务端返回空，不是本地阻止）
+    const logs = consoleInfo.mock.calls.map((c) => String(c[0])).join(' | ');
+    expect(logs).toContain('provider_empty');
+    // 不得误报为限流/客户端跳过
+    expect(logs).not.toContain('rate_limited');
+    expect(consoleWarn.mock.calls.map((c) => String(c[0])).join(' | ')).not.toContain('限流');
+  });
+
+  it('服务端返回空 choices（meta.choiceCount=0）→ provider_empty 区分「无候选」', async () => {
+    const mock = makeSqlStudioMock();
+    const consoleInfo = vi.spyOn(console, 'info').mockImplementation(() => {});
+    mock.setImpl(async () => ({ suggestion: '', meta: { choiceCount: 0 } }));
+    const provider = createAiInlineProvider({ enabled: true, config: CONFIG });
+
+    const p = provider.provideInlineCompletions(
+      modelStub('SELECT * FROM us', { lineNumber: 1, column: 16 }),
+      { lineNumber: 1, column: 16 }, null, null,
+    );
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_PLUS());
+    await p;
+    const logs = consoleInfo.mock.calls.map((c) => String(c[0])).join(' | ');
+    expect(logs).toContain('provider_empty');
+    expect(logs).toContain('空 choices');
+  });
+});

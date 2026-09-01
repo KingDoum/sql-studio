@@ -192,3 +192,92 @@ describe('AiConfig 与 AiPublicConfig（阶段 3：API Key 不泄露给 Renderer
     expect(store.getAiPublicConfig()).toBeNull();
   });
 });
+
+describe('AiConfig 请求策略 rateLimit（阶段 A：外观与 AI 限流）', () => {
+  const baseCfg = {
+    enabled: true,
+    baseUrl: 'https://api.deepseek.com/beta',
+    model: 'deepseek-v4-pro',
+    apiKey: 'sk-secret-123',
+    protocol: 'deepseek-fim' as const,
+  };
+
+  /** 直接向 settings 表写入一段「旧版 JSON」（无 rateLimit 字段），模拟历史配置。 */
+  const writeRawAiConfig = (raw: string) => {
+    (store as any).setSetting('ai_config', raw);
+  };
+
+  it('旧配置无 rateLimit 时 getAiPublicConfig 补四个默认值', () => {
+    writeRawAiConfig(JSON.stringify({ ...baseCfg }));
+    const pub = store.getAiPublicConfig();
+    expect(pub?.rateLimit).toEqual({
+      debounceMs: 400,
+      minRequestIntervalMs: 2500,
+      rateLimitCooldownMs: 15_000,
+      requestTimeoutMs: 12_000,
+    });
+  });
+
+  it('getAiConfig（Main 内部）旧配置同样补默认 rateLimit', () => {
+    writeRawAiConfig(JSON.stringify({ ...baseCfg }));
+    const internal = store.getAiConfig();
+    expect(internal?.rateLimit).toEqual({
+      debounceMs: 400,
+      minRequestIntervalMs: 2500,
+      rateLimitCooldownMs: 15_000,
+      requestTimeoutMs: 12_000,
+    });
+    expect(internal?.apiKey).toBe('sk-secret-123'); // Key 解密不受影响
+  });
+
+  it('保存时越界值被归一化（低于最小值 / 高于最大值）', () => {
+    store.setAiConfig({
+      ...baseCfg,
+      rateLimit: {
+        debounceMs: 1,
+        minRequestIntervalMs: 999_999,
+        rateLimitCooldownMs: 10,
+        requestTimeoutMs: 1,
+      } as never,
+    });
+    const internal = store.getAiConfig();
+    expect(internal?.rateLimit).toEqual({
+      debounceMs: 150,
+      minRequestIntervalMs: 30_000,
+      rateLimitCooldownMs: 1000,
+      requestTimeoutMs: 3000,
+    });
+  });
+
+  it('保存时小数 / NaN / 字符串污染不会进入运行时配置', () => {
+    store.setAiConfig({
+      ...baseCfg,
+      rateLimit: {
+        debounceMs: Number.NaN,
+        minRequestIntervalMs: '2500' as unknown as number,
+        rateLimitCooldownMs: 5000.6,
+        requestTimeoutMs: 12_000,
+      } as never,
+    });
+    const internal = store.getAiConfig();
+    expect(internal?.rateLimit?.debounceMs).toBe(400);
+    expect(internal?.rateLimit?.minRequestIntervalMs).toBe(2500);
+    expect(internal?.rateLimit?.rateLimitCooldownMs).toBe(5001);
+    expect(internal?.rateLimit?.requestTimeoutMs).toBe(12_000);
+  });
+
+  it('getAiPublicConfig 返回 rateLimit 但不返回 apiKey', () => {
+    store.setAiConfig({ ...baseCfg, rateLimit: { debounceMs: 200, minRequestIntervalMs: 1000, rateLimitCooldownMs: 5000, requestTimeoutMs: 8000 } });
+    const pub = store.getAiPublicConfig();
+    expect(pub?.rateLimit?.debounceMs).toBe(200);
+    expect((pub as unknown as Record<string, unknown>).apiKey).toBeUndefined();
+  });
+
+  it('空 API Key 保存（含 rateLimit）仍然保留旧密文', () => {
+    store.setAiConfig({ ...baseCfg });
+    store.setAiConfig({ ...baseCfg, apiKey: '', rateLimit: { debounceMs: 300, minRequestIntervalMs: 1500, rateLimitCooldownMs: 8000, requestTimeoutMs: 9000 } });
+    expect(store.getAiConfig()?.apiKey).toBe('sk-secret-123');
+    expect(store.getAiConfig()?.rateLimit?.debounceMs).toBe(300);
+    expect(store.getAiPublicConfig()?.apiKeyConfigured).toBe(true);
+  });
+});

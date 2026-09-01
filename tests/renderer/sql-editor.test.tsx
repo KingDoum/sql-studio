@@ -17,6 +17,8 @@ import type { EditorTab } from '@shared/types';
 const editorMock = vi.hoisted(() => ({
   onMountCb: null as null | ((editor: unknown, monaco: unknown) => void),
   beforeMountCb: null as null | ((monaco: unknown) => void),
+  // 捕获 <Editor theme=...> prop（验证 Monaco 主题映射）
+  editorTheme: null as null | string,
 }));
 
 // mock @monaco-editor/react：受控 stub（vi.mock 会被 vitest 提升到顶部）
@@ -26,14 +28,17 @@ vi.mock('@monaco-editor/react', () => ({
     onChange,
     onMount,
     beforeMount,
+    theme,
   }: {
     value: string;
     onChange?: (v: string | undefined) => void;
     onMount?: (e: unknown, m: unknown) => void;
     beforeMount?: (m: unknown) => void;
+    theme?: string;
   }) {
     if (onMount) editorMock.onMountCb = onMount;
     if (beforeMount) editorMock.beforeMountCb = beforeMount;
+    if (theme) editorMock.editorTheme = theme;
     return (
       <textarea
         data-testid="monaco-stub"
@@ -59,6 +64,12 @@ const AI_CONFIG = {
   model: 'deepseek-v4-pro',
   apiKeyConfigured: true,
   protocol: 'deepseek-fim' as const,
+  rateLimit: {
+    debounceMs: 400,
+    minRequestIntervalMs: 2500,
+    rateLimitCooldownMs: 15_000,
+    requestTimeoutMs: 12_000,
+  },
 };
 
 /** 构造 fake Monaco（仅含 SqlEditor 用到的 API）。 */
@@ -166,6 +177,37 @@ describe('SqlEditor', () => {
     );
     expect(await screen.findByText('格式化')).toBeTruthy();
     expect(screen.getByText('执行')).toBeTruthy();
+  });
+
+  it('Monaco 主题三值映射：dark/light/titanium（阶段 E）', async () => {
+    cleanup();
+    editorMock.editorTheme = null;
+    render(
+      <SqlEditor
+        tab={tab}
+        connectionId={null}
+        onSqlChange={() => {}}
+        onExecute={() => {}}
+        theme="titanium"
+      />,
+    );
+    expect(await screen.findByTestId('monaco-stub')).toBeTruthy();
+    expect(editorMock.editorTheme).toBe('sql-studio-titanium');
+  });
+
+  it('默认主题为深色映射 sql-studio-dark（不回归）', async () => {
+    cleanup();
+    editorMock.editorTheme = null;
+    render(
+      <SqlEditor
+        tab={tab}
+        connectionId={null}
+        onSqlChange={() => {}}
+        onExecute={() => {}}
+      />,
+    );
+    expect(await screen.findByTestId('monaco-stub')).toBeTruthy();
+    expect(editorMock.editorTheme).toBe('sql-studio-dark');
   });
 });
 

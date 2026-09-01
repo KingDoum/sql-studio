@@ -157,11 +157,24 @@ describe('AI 补全接口预留（V2 契约）', () => {
       model: 'deepseek-v4-pro',
       protocol: 'deepseek-fim',
       apiKeyConfigured: true,
+      rateLimit: {
+        debounceMs: 400,
+        minRequestIntervalMs: 2500,
+        rateLimitCooldownMs: 15_000,
+        requestTimeoutMs: 12_000,
+      },
     };
     // 编译期保证：AiPublicConfig 上不存在 apiKey 字段
     expect((pub as unknown as Record<string, unknown>).apiKey).toBeUndefined();
     // 契约映射确实指向 AiPublicConfig | null
     const resp: IpcResponseMap['settings:getAiConfig'] = pub;
     expect(resp.apiKeyConfigured).toBe(true);
+    // 阶段 A：public 配置携带归一化的 rateLimit（无敏感数据）
+    expect(resp.rateLimit).toEqual({
+      debounceMs: 400,
+      minRequestIntervalMs: 2500,
+      rateLimitCooldownMs: 15_000,
+      requestTimeoutMs: 12_000,
+    });
   });
 });

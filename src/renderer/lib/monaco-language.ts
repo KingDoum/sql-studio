@@ -198,3 +198,39 @@ export const SQL_STUDIO_THEME_LIGHT: SqlStudioThemeData = {
     'editorSuggestWidget.foreground': '#111827',
   },
 };
+
+/** 钛灰主题（第三套，苹果式克制中性灰；与 [data-theme="titanium"] 页面令牌协调）。 */
+export const SQL_STUDIO_THEME_TITANIUM: SqlStudioThemeData = {
+  base: 'vs',
+  inherit: true,
+  rules: [
+    { token: 'keyword', foreground: '4B6580', fontStyle: 'bold' },
+    { token: 'sql-table', foreground: '2F7D5F' },
+    { token: 'sql-column', foreground: '3D6A94' },
+    { token: 'sql-db', foreground: '9A6F1F' },
+    { token: 'identifier', foreground: '20252B' },
+    { token: 'string', foreground: '5B7A4F' },
+    { token: 'number', foreground: '3D6A94' },
+    { token: 'comment', foreground: '7B8591', fontStyle: 'italic' },
+    { token: 'delimiter', foreground: '59636F' },
+    { token: 'operator', foreground: '59636F' },
+    { token: 'white', foreground: '20252B' },
+  ],
+  colors: {
+    'editor.background': '#F2F4F7',
+    'editor.foreground': '#20252B',
+    'editorLineNumber.foreground': '#A9B1BB',
+    'editorLineNumber.activeForeground': '#59636F',
+    'editor.selectionBackground': '#C5D3E6',
+    'editor.inactiveSelectionBackground': '#DDE7F3',
+    'editorCursor.foreground': '#4B6580',
+    'editorIndentGuide.background': '#D5DAE1',
+    'editorIndentGuide.activeBackground': '#B7C0CB',
+    'editorLineHighlightBackground': '#E8EDF2',
+    'editorWidget.background': '#FFFFFF',
+    'editorSuggestWidget.background': '#FFFFFF',
+    'editorSuggestWidget.selectedBackground': '#DDE7F3',
+    'editorSuggestWidget.border': '#CFD6DE',
+    'editorSuggestWidget.foreground': '#20252B',
+  },
+};

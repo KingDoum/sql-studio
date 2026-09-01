@@ -4,6 +4,7 @@ import {
   History,
   Star,
   Settings,
+  Palette,
   CheckCircle2,
   AlertCircle,
   AlertTriangle,
@@ -19,6 +20,7 @@ import { TableFieldsPanel } from '@renderer/components/TableFieldsPanel';
 import { HistoryPanel } from '@renderer/components/HistoryPanel';
 import { FavoritesPanel } from '@renderer/components/FavoritesPanel';
 import { AiSettingsPanel } from '@renderer/components/AiSettingsPanel';
+import { AppearancePanel } from '@renderer/components/AppearancePanel';
 import { SettingsPanel } from '@renderer/components/SettingsPanel';
 import { ensureDebugLogging } from '@renderer/lib/debug-log';
 import type { ConnectionSummary, ThemeMode } from '@shared/types';
@@ -50,6 +52,7 @@ function App() {
   const [showAiSettings, setShowAiSettings] = useState(false);
   const [aiSettingsVersion, setAiSettingsVersion] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
+  const [showAppearance, setShowAppearance] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>('dark');
   const [debugMode, setDebugMode] = useState(false);
   const [fontSize, setFontSize] = useState(12);
@@ -59,10 +62,16 @@ function App() {
   const [favoriteSql, setFavoriteSql] = useState('');
   const [showTableFields, setShowTableFields] = useState(true);
   const sqlEditorRef = useRef<SqlEditorHandle | null>(null);
+
+  /** 合法主题集合（AppearancePanel 唯一来源）。 */
+  const VALID_THEMES: ThemeMode[] = ['dark', 'light', 'titanium'];
+
   // 启动时读取主题/调试模式设置并应用
   useEffect(() => {
     void window.sqlStudio['settings:get']({ key: 'theme' }).then((v) => {
-      if (v === 'light' || v === 'dark') applyTheme(v as ThemeMode);
+      // 接受 dark/light/titanium；未知/缺失回退 dark（并写入 dataset 保证显式状态）
+      if (v && (VALID_THEMES as string[]).includes(v)) applyTheme(v as ThemeMode);
+      else applyTheme('dark');
     });
     void window.sqlStudio['settings:get']({ key: 'debugMode' }).then((v) => {
       if (v === '1' || v === 'true') {
@@ -410,7 +419,10 @@ function App() {
           <button className="top-bar-icon-btn" onClick={() => setShowFavorites(true)} title="命名收藏">
             <Star size={15} />
           </button>
-          <button className="top-bar-icon-btn" onClick={() => setShowSettings(true)} title="设置">
+          <button className="top-bar-icon-btn" onClick={() => setShowAppearance(true)} title="外观（主题与字体）">
+            <Palette size={15} />
+          </button>
+          <button className="top-bar-icon-btn" onClick={() => setShowSettings(true)} title="设置（调试）">
             <Settings size={15} />
           </button>
         </div>
@@ -560,15 +572,19 @@ function App() {
       </Modal>
       <SettingsPanel
         open={showSettings}
-        theme={theme}
         debugMode={debugMode}
+        onDebugModeChange={handleDebugModeChange}
+        onClose={() => setShowSettings(false)}
+      />
+      <AppearancePanel
+        open={showAppearance}
+        theme={theme}
         fontSize={fontSize}
         fontFamily={fontFamily}
         onThemeChange={handleThemeChange}
-        onDebugModeChange={handleDebugModeChange}
         onFontSizeChange={handleFontSizeChange}
         onFontFamilyChange={handleFontFamilyChange}
-        onClose={() => setShowSettings(false)}
+        onClose={() => setShowAppearance(false)}
       />
       <AiSettingsPanel
         open={showAiSettings}

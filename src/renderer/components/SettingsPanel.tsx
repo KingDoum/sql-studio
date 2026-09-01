@@ -1,52 +1,27 @@
 /**
- * SettingsPanel（设置面板：主题切换 + 调试模式 + 调试日志，UI 重设计 S4 统一弹窗）
+ * SettingsPanel（设置面板：调试模式 + 调试日志，UI 重设计 S4 统一弹窗）
  *
- * - 主题：深色 / 白天（本地 state + App 负责持久化到 settings）
- * - 字体：字号滑块 + 等宽字体风格选择
- * - 调试模式：开关 + 实时日志列表 + 一键复制调试日志
+ * 外观与 AI 限流升级（2026-09-01）：
+ *  - 主题与字体设置已迁移至独立 `AppearancePanel`（顶部应用栏「外观」入口打开）；
+ *  - 本面板只保留「调试模式」开关 + 实时日志 + 一键复制/清空；
+ *  - 不再维护第二套主题/字体状态（架构：外观状态唯一来源在 App + AppearancePanel）。
  */
 import { useEffect, useState } from 'react';
-import { Sun, Moon, Bug, Copy, Check, Trash2 } from 'lucide-react';
-import type { ThemeMode } from '@shared/types';
+import { Bug, Copy, Check, Trash2 } from 'lucide-react';
 import { getDebugLogEntries, formatDebugLogText, formatLogEntryLine, clearDebugLogs, type DebugLogEntry } from '@renderer/lib/debug-log';
 import { Modal } from './Modal';
 
 export interface SettingsPanelProps {
   open: boolean;
-  theme: ThemeMode;
   debugMode: boolean;
-  fontSize: number;
-  fontFamily: string;
-  onThemeChange(theme: ThemeMode): void;
   onDebugModeChange(enabled: boolean): void;
-  onFontSizeChange(size: number): void;
-  onFontFamilyChange(family: string): void;
   onClose(): void;
 }
 
-const THEME_OPTIONS: Array<{ value: ThemeMode; label: string; icon: typeof Sun }> = [
-  { value: 'dark', label: '深色', icon: Moon },
-  { value: 'light', label: '白天', icon: Sun },
-];
-
-const FONT_OPTIONS = [
-  { value: 'jetbrains', label: 'JetBrains Mono' },
-  { value: 'firacode', label: 'Fira Code' },
-  { value: 'sourcecode', label: 'Source Code Pro' },
-  { value: 'cascadia', label: 'Cascadia Code' },
-  { value: 'system', label: '系统默认' },
-];
-
 export function SettingsPanel({
   open,
-  theme,
   debugMode,
-  fontSize,
-  fontFamily,
-  onThemeChange,
   onDebugModeChange,
-  onFontSizeChange,
-  onFontFamilyChange,
   onClose,
 }: SettingsPanelProps) {
   const [logs, setLogs] = useState<DebugLogEntry[]>([]);
@@ -79,58 +54,6 @@ export function SettingsPanel({
   return (
     <Modal open={open} onClose={onClose} title="设置" width={520} panelClassName="settings-panel">
       <div className="settings-body">
-        {/* 主题切换 */}
-        <section className="settings-section">
-          <h4>主题</h4>
-          <div className="settings-theme-row">
-            {THEME_OPTIONS.map((opt) => {
-              const Icon = opt.icon;
-              const active = theme === opt.value;
-              return (
-                <button
-                  key={opt.value}
-                  className={`settings-theme-btn${active ? ' active' : ''}`}
-                  onClick={() => onThemeChange(opt.value)}
-                >
-                  <Icon size={14} />
-                  <span>{opt.label}</span>
-                </button>
-              );
-            })}
-          </div>
-          <p className="settings-section-hint">选择界面主题，同一套设计令牌自动跟随</p>
-        </section>
-
-        {/* 字体设置 */}
-        <section className="settings-section">
-          <h4>字体</h4>
-          <div className="settings-font-row">
-            <span className="settings-font-label">字号</span>
-            <input
-              className="settings-font-range"
-              type="range"
-              min={10}
-              max={30}
-              step={1}
-              value={fontSize}
-              onChange={(e) => onFontSizeChange(Number(e.target.value))}
-            />
-            <span className="settings-font-value">{fontSize}px</span>
-          </div>
-          <div className="settings-font-row">
-            <span className="settings-font-label">风格</span>
-            <select
-              className="settings-font-select"
-              value={fontFamily}
-              onChange={(e) => onFontFamilyChange(e.target.value)}
-            >
-              {FONT_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
-        </section>
-
         {/* 调试模式 */}
         <section className="settings-section">
           <h4>调试模式</h4>
@@ -142,6 +65,7 @@ export function SettingsPanel({
             />
             <span>开启调试模式（显示日志）</span>
           </label>
+          <p className="settings-section-hint">主题与字体设置已移至顶部「外观」入口。</p>
           {debugMode && (
             <div className="settings-debug-log">
               <div className="settings-debug-log-head">

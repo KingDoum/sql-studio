@@ -21,7 +21,7 @@ import {
   SchemaCompletionProvider,
   type SchemaSnapshot,
 } from '@renderer/lib/sql-completion';
-import { buildSqlMonarchLanguage, SQL_STUDIO_THEME, SQL_STUDIO_THEME_LIGHT } from '@renderer/lib/monaco-language';
+import { buildSqlMonarchLanguage, SQL_STUDIO_THEME, SQL_STUDIO_THEME_LIGHT, SQL_STUDIO_THEME_TITANIUM } from '@renderer/lib/monaco-language';
 import {
   createAiInlineProvider,
   fetchAiConfig,
@@ -280,9 +280,10 @@ export const SqlEditor = React.forwardRef<SqlEditorHandle, SqlEditorProps>(funct
   saveRef.current = onSave;
 
 const beforeMount: BeforeMount = useCallback((monaco) => {
-    // 注册主题
+    // 注册主题（dark / light / titanium 三套）
     monaco.editor.defineTheme('sql-studio-dark', SQL_STUDIO_THEME);
     monaco.editor.defineTheme('sql-studio-light', SQL_STUDIO_THEME_LIGHT);
+    monaco.editor.defineTheme('sql-studio-titanium', SQL_STUDIO_THEME_TITANIUM);
 
     // 补全 provider：全局只注册一次
     if (!completionProviderRegistered) {
@@ -356,7 +357,7 @@ const beforeMount: BeforeMount = useCallback((monaco) => {
   const onMount: OnMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
-    editor.updateOptions({ theme: theme === 'light' ? 'sql-studio-light' : 'sql-studio-dark' });
+    editor.updateOptions({ theme: monacoThemeFor(theme) });
     // 初装 tokenizer（空 schema）
     applyTokenizer(monaco, null);
     // 阶段 2 修复：Monaco 挂载时若 AI 配置已加载，立即注册 inline provider。
@@ -492,7 +493,7 @@ const beforeMount: BeforeMount = useCallback((monaco) => {
         <Editor
           path={tab.id}
           language="sql"
-          theme={theme === 'light' ? 'sql-studio-light' : 'sql-studio-dark'}
+          theme={monacoThemeFor(theme)}
           defaultValue={tab.sql}
           beforeMount={beforeMount}
           onMount={onMount}
@@ -523,6 +524,13 @@ const beforeMount: BeforeMount = useCallback((monaco) => {
 });
 
 // ── 辅助 ──
+
+/** ThemeMode → Monaco 主题名（显式三值映射；未知回退深色）。 */
+function monacoThemeFor(theme: ThemeMode): string {
+  if (theme === 'light') return 'sql-studio-light';
+  if (theme === 'titanium') return 'sql-studio-titanium';
+  return 'sql-studio-dark';
+}
 
 function categoryToMonacoKind(
   cat: string,

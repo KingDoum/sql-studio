@@ -137,3 +137,67 @@ describe('App 工作台冒烟', () => {
     expect((stub as HTMLTextAreaElement).value).toBe('SELECT 9;');
   });
 });
+
+describe('App · 外观主题（阶段 E）', () => {
+  beforeEach(() => {
+    useWorkspace.setState({
+      currentConnectionId: null,
+      tabs: [],
+      activeTabId: null,
+      execution: null,
+    });
+    vi.spyOn(window, 'prompt').mockReturnValue('/save/script.sql');
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    // 重置 dataset.theme，避免用例间主题状态泄漏
+    delete document.documentElement.dataset.theme;
+  });
+
+  /** 让 settings:get 对指定 key 返回值。 */
+  function mockThemeSetting(value: string | null) {
+    return mockFullSqlStudio({
+      'settings:get': vi.fn(async ({ key }: { key: string }) => {
+        if (key === 'theme') return value;
+        return null;
+      }),
+    });
+  }
+
+  it('启动读取 titanium → dataset.theme 为 titanium 且写入 settings', async () => {
+    const store = mockThemeSetting('titanium');
+    render(<App />);
+    await waitFor(() =>
+      expect(document.documentElement.dataset.theme).toBe('titanium'),
+    );
+    await waitFor(() =>
+      expect(store['settings:set']).toHaveBeenCalledWith({ key: 'theme', value: 'titanium' }),
+    );
+  });
+
+  it('启动读取 light → dataset.theme 为 light（dark/light 行为不回归）', async () => {
+    mockThemeSetting('light');
+    render(<App />);
+    await waitFor(() =>
+      expect(document.documentElement.dataset.theme).toBe('light'),
+    );
+  });
+
+  it('未知主题值回退 dark（不清空、不写非法值）', async () => {
+    const store = mockThemeSetting('neon');
+    render(<App />);
+    await waitFor(() =>
+      expect(document.documentElement.dataset.theme).toBe('dark'),
+    );
+    // 不应把非法值写回设置
+    const setCalls = (store['settings:set'] as ReturnType<typeof vi.fn>).mock.calls;
+    expect(setCalls.some((c) => c[0]?.value === 'neon')).toBe(false);
+  });
+
+  it('顶部栏「外观」按钮可打开外观面板（三种主题可见）', async () => {
+    mockThemeSetting(null);
+    render(<App />);
+    fireEvent.click(screen.getByTitle('外观（主题与字体）'));
+    expect(await screen.findByText('钛灰')).toBeTruthy();
+    expect(screen.getByText('深色')).toBeTruthy();
+    expect(screen.getByText('白天')).toBeTruthy();
+  });
+});

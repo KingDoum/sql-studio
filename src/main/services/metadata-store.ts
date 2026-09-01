@@ -12,6 +12,7 @@
 
 import Database from 'better-sqlite3';
 import { Security } from './security';
+import { normalizeAiRateLimitConfig } from '@shared/ai-protocol';
 import type {
   ConnectionConfig,
   ConnectionInput,
@@ -287,6 +288,8 @@ export class MetadataStore {
     if (!raw) return null;
     try {
       const parsed = JSON.parse(raw) as import('@shared/types').AiConfig;
+      // 旧配置可能没有 rateLimit：自动补默认值（兼容旧数据，不失败）
+      parsed.rateLimit = normalizeAiRateLimitConfig(parsed.rateLimit);
       if (parsed.apiKey) {
         const key = typeof parsed.apiKey === 'string' ? parsed.apiKey : '';
         parsed.apiKey = this.security.decrypt(key);
@@ -300,6 +303,7 @@ export class MetadataStore {
   /**
    * 读取 Renderer 可见的 AI 配置（阶段 3）：不含 apiKey 明文，仅含 apiKeyConfigured。
    * 绝不在任何 IPC 响应中返回解密后的 Key。
+   * 阶段 A（外观与 AI 限流）：返回归一化后的 rateLimit，不含任何敏感数据。
    */
   getAiPublicConfig(): import('@shared/types').AiPublicConfig | null {
     const raw = this.getSetting(this.AI_CONFIG_KEY);
@@ -312,6 +316,8 @@ export class MetadataStore {
         model: parsed.model ?? '',
         protocol: parsed.protocol,
         apiKeyConfigured: !!(parsed.apiKey && typeof parsed.apiKey === 'string' && parsed.apiKey.length > 0),
+        // 旧配置无 rateLimit 时归一化会补默认值；越界/非数字也会被修正
+        rateLimit: normalizeAiRateLimitConfig(parsed.rateLimit),
       };
     } catch {
       return null;
@@ -322,6 +328,7 @@ export class MetadataStore {
    * 保存 AiConfig（apiKey 经 security.encrypt 加密后落库）。
    * 阶段 3 安全规则：apiKey 为空/空白 → 保留旧密文（用户不能通过空输入意外清空 Key）；
    * 用户填写新 Key → 更新密文。
+   * 阶段 A（外观与 AI 限流）：保存前归一化 rateLimit，越界/非数字值不会进入运行时配置。
    */
   setAiConfig(config: import('@shared/types').AiConfig): void {
     const newKey = typeof config.apiKey === 'string' ? config.apiKey.trim() : '';
@@ -341,7 +348,11 @@ export class MetadataStore {
         }
       }
     }
-    const toStore: import('@shared/types').AiConfig = { ...config, apiKey: apiKeyToStore };
+    const toStore: import('@shared/types').AiConfig = {
+      ...config,
+      apiKey: apiKeyToStore,
+      rateLimit: normalizeAiRateLimitConfig(config.rateLimit),
+    };
     this.setSetting(this.AI_CONFIG_KEY, JSON.stringify(toStore));
   }
 }

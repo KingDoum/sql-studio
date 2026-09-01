@@ -409,19 +409,49 @@ export interface CompletionItem {
   score?: number;
 }
 
-/** AI 配置（V2 接入 OpenAI 兼容 API 时使用；V1 仅类型占位）。 */
+/**
+ * AI 补全协议。
+ * - `deepseek-fim`：DeepSeek 官方 FIM 接口（/beta/completions，请求体 prompt+suffix，响应 choices[0].text）。
+ * - `openai-chat`：OpenAI 兼容 Chat 接口（/v1/chat/completions，响应 choices[0].message.content）。
+ *
+ * 阶段 1（FIM 协议修复）：不再以 URL 猜测协议，显式携带 protocol。
+ */
+export type AiProtocol = 'deepseek-fim' | 'openai-chat';
+
+/** AI 配置（Main 内部使用，含明文 API Key；绝不经普通 IPC 返回 Renderer）。 */
 export interface AiConfig {
   /** 是否启用 AI 补全。 */
   enabled: boolean;
-  /** API BaseURL（如 https://api.deepseek.com/v1）。 */
+  /** API BaseURL（如 https://api.deepseek.com/beta）。 */
   baseUrl: string;
-  /** 模型名（如 deepseek-chat）。 */
+  /** 模型名（如 deepseek-v4-pro）。 */
   model: string;
   /**
    * API Key。V2 经 safeStorage 加密后落 SQLite settings 表；
-   * 内存传递时可为明文，绝不经普通 IPC 明文持久化。
+   * 内存传递时可为明文，仅 Main 进程持有（阶段 3：Renderer 不再看到 apiKey）。
    */
   apiKey: string;
+  /**
+   * 补全协议。可选：兼容旧配置（无 protocol 时按 baseUrl 含 /beta 推断为 FIM，否则 Chat）。
+   */
+  protocol?: AiProtocol;
+}
+
+/**
+ * Renderer 可见的 AI 配置（阶段 3：绝不含 apiKey）。
+ * 仅用于设置面板展示与 ai-provider 可用性判断。
+ */
+export interface AiPublicConfig {
+  /** 是否启用 AI 补全。 */
+  enabled: boolean;
+  /** API BaseURL（如 https://api.deepseek.com/beta）。 */
+  baseUrl: string;
+  /** 模型名（如 deepseek-v4-pro）。 */
+  model: string;
+  /** 补全协议（可选，兼容旧配置推断）。 */
+  protocol?: AiProtocol;
+  /** API Key 是否已配置（true=已保存过 Key，供 UI 显示"已配置"而非泄露内容）。 */
+  apiKeyConfigured: boolean;
 }
 
 /** AI 补全请求（V2 使用，`ai.complete` channel 占位）。 */

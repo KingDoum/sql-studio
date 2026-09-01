@@ -1,5 +1,5 @@
 /**
- * AiCompletionProvider（V2：AI 行内灰色预测）。
+ * AiCompletionProvider（V2：AI 行内灰色预测，阶段 2：注册时序 + 完整上下文修复）。
  *
  * 注册为 Monaco `registerInlineCompletionsProvider`，在用户输入时
  * 通过 IPC `ai:complete` 向主进程请求 AI 建议，返回灰色行内预测文本。
@@ -8,19 +8,25 @@
  * 触发时机：Monaco 每次输入变化都会调 provideInlineCompletions。
  * 本实现加了防抖（停止输入 DEBOUNCE_MS 才真正请求），避免每击键一次。
  *
+ * 上下文（阶段 2 修复）：
+ *  - prefix：第 1 行第 1 列到当前光标的完整文本（跨行），不是仅当前行；
+ *  - suffix：当前光标到文档末尾（DeepSeek FIM 需要 suffix 提升补全质量）。
+ *
  * 日志：本文件所有关键路径都打 console.info/warn —— 会被调试日志面板
- * （设置 → 调试日志）捕获，方便排查"为什么不显示灰色预测"。
+ * （设置 → 调试日志）捕获。日志只输出非敏感摘要（prefixLen/suffixLen/协议），
+ * 禁止输出 API Key、完整 prefix/suffix/SQL、Authorization header。
  *
  * 限流保护（2026-08-30 修复 429 刷屏 + 日志可观测）：
  *  - 防抖：停止输入后过 DEBOUNCE_MS 才请求；
  *  - 失败冷却：429/5xx 后进入 COOLDOWN_MS，期间直接返回空、只 warn 一次；
- *  - 过期丢弃：并发只采纳最新请求。
+ *  - 过期丢弃：并发只采纳最新请求，过期响应打明确日志。
  */
-import type { AiConfig } from '@shared/types';
+import type { AiPublicConfig } from '@shared/types';
+import { resolveProtocol } from '@shared/ai-protocol';
 
 export interface AiProviderState {
   enabled: boolean;
-  config: AiConfig | null;
+  config: AiPublicConfig | null;
 }
 
 const DEBOUNCE_MS = 400;
@@ -34,7 +40,7 @@ const RATE_LIMIT_HINTS = ['过于频繁', '429', 'rate limit', 'rate_limit', 'To
 /** 带超时的 ai:complete：超时返回 { timeout: true }；错误返回 { error }；正常返回原始响应。 */
 type AiCallResult = { timeout: boolean; raw?: { suggestion: string }; error?: unknown };
 async function callAiCompleteWithTimeout(
-  args: { prefix: string; maxTokens: number },
+  args: { prefix: string; suffix: string; maxTokens: number },
 ): Promise<AiCallResult> {
   return new Promise((resolve) => {
     let settled = false;
@@ -70,6 +76,11 @@ function logAi(level: 'info' | 'warn' | 'error', msg: string, detail?: unknown):
   else window.console.info(`[AI] ${msg}${suffix}`);
 }
 
+/** AI 是否已配置（阶段 3：Renderer 看不到 apiKey，改用 apiKeyConfigured 判断）。 */
+function isAiReady(state: AiProviderState): boolean {
+  return !!state.enabled && !!state.config?.apiKeyConfigured;
+}
+
 export function createAiInlineProvider(
   state: AiProviderState,
 ): {
@@ -91,6 +102,8 @@ export function createAiInlineProvider(
   let cooldownUntil = 0;
   let lastRequestAt = 0;
   let warnedRateLimit = false;
+  // 是否已打过“初始化/就绪”日志（只打一次，避免刷屏）
+  let loggedInit = false;
 
   /** 停止等待并返回 'skip'，让旧调用尽快空返回（不被悬挂）。 */
   const skipPendingDebounce = () => {
@@ -111,7 +124,15 @@ export function createAiInlineProvider(
 
   return {
     provideInlineCompletions: async (_model, position, _context, _token) => {
-      if (!state.enabled || !state.config?.apiKey) {
+      // 可观测：provider 初始化 / AI 启用 / Key 是否已配置（只打一次）
+      if (!loggedInit) {
+        loggedInit = true;
+        logAi(
+          'info',
+          `provider 初始化: enabled=${state.enabled} apiKeyConfigured=${isAiReady(state)} protocol=${state.config ? resolveProtocol(state.config.protocol, state.config.baseUrl) : 'n/a'}`,
+        );
+      }
+      if (!isAiReady(state)) {
         // 未启用/未配置：每次输入都到这（Monaco 频繁调用），用 debug 级避免刷屏
         return { items: [] };
       }
@@ -145,25 +166,45 @@ export function createAiInlineProvider(
         const model = _model as {
           getValueInRange: (r: { startLineNumber: number; endLineNumber: number; startColumn: number; endColumn: number }) => string;
           getLineContent: (line: number) => string;
+          getLineCount: () => number;
         };
-        // 光标前文本（当前行光标之前）
+        // prefix：第 1 行第 1 列 → 当前光标（跨行完整文档前缀）
         const prefix = model.getValueInRange({
-          startLineNumber: position.lineNumber,
+          startLineNumber: 1,
           endLineNumber: position.lineNumber,
           startColumn: 1,
           endColumn: position.column,
+        });
+        // suffix：当前光标 → 文档末尾
+        const lastLine = model.getLineCount();
+        const lastLineLen = model.getLineContent(lastLine).length;
+        const suffix = model.getValueInRange({
+          startLineNumber: position.lineNumber,
+          endLineNumber: lastLine,
+          startColumn: position.column,
+          endColumn: lastLineLen + 1,
         });
         if (!prefix.trim()) return { items: [] };
 
         // 过期丢弃：只采纳最新一次请求的响应
         const mySeq = ++seq;
         lastRequestAt = Date.now();
-        logAi('info', `行内补全触发: line=${position.lineNumber} col=${position.column} prefixLen=${prefix.length}`);
+        const protocol = state.config ? resolveProtocol(state.config.protocol, state.config.baseUrl) : 'n/a';
+        logAi(
+          'info',
+          `请求开始: line=${position.lineNumber} col=${position.column} protocol=${protocol} prefixLen=${prefix.length} suffixLen=${suffix.length}`,
+        );
         const started = Date.now();
-        const call = await callAiCompleteWithTimeout({ prefix, maxTokens: 512 });
+        const call = await callAiCompleteWithTimeout({ prefix, suffix, maxTokens: 512 });
         const elapsed = Date.now() - started;
 
-        if (cancelled || mySeq !== seq) return { items: [] };
+        if (cancelled) return { items: [] };
+
+        // 过期响应：明确日志（否则用户只看到触发日志，看不到响应，不知道是被限流还是被丢弃）
+        if (mySeq !== seq) {
+          logAi('warn', `行内补全响应已丢弃：请求已过期（seq=${mySeq} < 最新=${seq}）`);
+          return { items: [] };
+        }
 
         if (call.timeout) {
           logAi('warn', `行内补全请求超时（>${REQUEST_TIMEOUT_MS / 1000}s），已放弃本次请求`, { elapsed });
@@ -220,10 +261,10 @@ export function createAiInlineProvider(
   };
 }
 
-/** 读取 AI 设置（从主进程）。 */
+/** 读取 AI 设置（从主进程，Renderer 拿到的只有 AiPublicConfig，不含 apiKey）。 */
 export async function fetchAiConfig(): Promise<AiProviderState> {
   try {
-    const config = await getSqlStudio()['settings:getAiConfig'](undefined) as AiConfig | null;
+    const config = await getSqlStudio()['settings:getAiConfig'](undefined) as AiPublicConfig | null;
     return { enabled: config?.enabled ?? false, config };
   } catch {
     return { enabled: false, config: null };

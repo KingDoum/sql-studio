@@ -227,6 +227,30 @@ describe('registerIpc', () => {
     expect(missing.data).toBeNull();
   });
 
+  it('settings:getAiConfig 响应不含 apiKey，仅 apiKeyConfigured（阶段 3）', async () => {
+    // 先保存带 Key 的配置
+    metadataStore.setAiConfig({
+      enabled: true,
+      baseUrl: 'https://api.deepseek.com/beta',
+      model: 'deepseek-v4-pro',
+      apiKey: 'sk-secret-xyz',
+      protocol: 'deepseek-fim',
+    });
+    const getFn = handlers.get('settings:getAiConfig')!;
+    const res = (await getFn(null, undefined)) as { ok: true; data: { apiKey?: string; apiKeyConfigured?: boolean } };
+    expect(res.ok).toBe(true);
+    // 响应中绝无明文/密文 apiKey
+    expect(res.data.apiKey).toBeUndefined();
+    expect(res.data.apiKeyConfigured).toBe(true);
+  });
+
+  it('settings:getAiConfig 无配置时返回 null', async () => {
+    const getFn = handlers.get('settings:getAiConfig')!;
+    const res = (await getFn(null, undefined)) as { ok: true; data: unknown };
+    expect(res.ok).toBe(true);
+    expect(res.data).toBeNull();
+  });
+
   it('dialog:showSaveDialog handler 已注册（真实对话框由 Electron 运行时提供）', () => {
     expect(handlers.has('dialog:showSaveDialog')).toBe(true);
   });

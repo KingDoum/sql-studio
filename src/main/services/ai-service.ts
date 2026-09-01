@@ -1,18 +1,28 @@
 /**
- * AI 服务（V2：OpenAI 兼容 API 调用）。
+ * AI 服务（V2：OpenAI 兼容 API 调用，阶段 1：DeepSeek FIM 协议修复）。
  *
- * 职责：向 OpenAI 兼容接口（DeepSeek / 腾讯混元等）发送补全请求，
- * 返回 SQL 行内补全建议。错误规范化：超时/认证失败/限流 → 友好中文提示。
+ * 职责：按 `protocol` 把补全请求发到正确的接口：
+ *  - `deepseek-fim` → `https://<base>/beta/completions`，请求体 {model, prompt, suffix, max_tokens, temperature, stream:false}，
+ *    不发送 messages；响应读 choices[0].text。
+ *  - `openai-chat`  → `/v1/chat/completions`，响应读 choices[0].message.content（保留兼容）。
  *
+ * 错误规范化：超时/认证失败/限流 → 友好中文提示。
  * 依赖注入：构造函数注入 fetch 函数（默认 globalThis.fetch，单测可 mock）。
  * 不依赖 Electron 环境，可在 Node 或 Electron 主进程复用。
+ *
+ * 铁律：日志不输出 API Key、完整 prefix/suffix/SQL 与 Authorization header。
  */
 import type { AiConfig, AiCompletionRequest, AiCompletionResponse } from '@shared/types';
+import {
+  clampMaxTokens,
+  resolveCompletionsUrl,
+  resolveProtocol,
+} from '@shared/ai-protocol';
 
 /** 超时毫秒。 */
 const REQUEST_TIMEOUT_MS = 15_000;
 
-/** 流式/非流式：V1 用非流式。 */
+/** Chat 模式系统提示（FIM 模式不用，因为 FIM 不走 messages）。 */
 const SYSTEM_PROMPT = `You are a SQL completion assistant for MySQL/MariaDB.
 Complete the SQL statement based on the prefix provided.
 Return ONLY the SQL text that would complete the statement — no explanation, no markdown, no backticks, no prefix repetition.
@@ -25,8 +35,8 @@ export class AiService {
 
   /**
    * 调用 AI API 获取 SQL 补全建议。
-   * @param req 补全请求（prefix）
-   * @param config API 配置（baseUrl / model / apiKey）
+   * @param req 补全请求（prefix + suffix）
+   * @param config API 配置（baseUrl / model / apiKey / protocol）
    * @param signal 可选 AbortSignal（用于取消）
    */
   async complete(
@@ -34,11 +44,9 @@ export class AiService {
     config: AiConfig,
     signal?: AbortSignal,
   ): Promise<AiCompletionResponse> {
-    const baseUrl = config.baseUrl.replace(/\/+$/, '');
-    // 兼容 OpenAI 标准 API 路径（自动补全 /v1 前缀）
-    const url = baseUrl.endsWith('/v1')
-      ? `${baseUrl}/chat/completions`
-      : `${baseUrl}/v1/chat/completions`;
+    const protocol = resolveProtocol(config.protocol, config.baseUrl);
+    const url = resolveCompletionsUrl(config.baseUrl, protocol);
+    const maxTokens = clampMaxTokens(req.maxTokens);
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -47,26 +55,24 @@ export class AiService {
       : controller.signal;
 
     try {
-      // 日志只输出非敏感诊断信息：URL（不含 query/密钥）与请求规模摘要。
+      // 日志只输出非敏感诊断信息：URL（不含 query/密钥）、协议与请求规模摘要。
       // 不输出 SQL 前缀/正文/API Key（铁律：日志不得泄露完整敏感 SQL 与密钥）。
       const urlSummary = url.split('?')[0];
-      console.log('[AI] 请求:', urlSummary, 'model:', config.model, 'prefixLen:', req.prefix.length);
+      console.log(
+        '[AI] 请求:', urlSummary,
+        'protocol:', protocol,
+        'model:', config.model,
+        'prefixLen:', req.prefix.length,
+        'suffixLen:', (req.suffix ?? '').length,
+      );
+      const body = buildBody(req, config, protocol, maxTokens);
       const resp = await this.fetchFn(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${config.apiKey}`,
         },
-        body: JSON.stringify({
-          model: config.model,
-          messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            { role: 'user', content: `Complete the SQL:\n${req.prefix}` },
-          ],
-          max_tokens: req.maxTokens ?? 512,
-          temperature: 0.2,
-          stream: false,
-        }),
+        body: JSON.stringify(body),
         signal: mergedSignal,
       });
 
@@ -74,16 +80,48 @@ export class AiService {
         throw normalizeError(resp.status, await resp.text().catch(() => ''));
       }
 
-      console.log('[AI] 响应状态:', resp.status);
+      console.log('[AI] 响应状态:', resp.status, 'protocol:', protocol);
       const data = (await resp.json()) as {
-        choices?: Array<{ message?: { content?: string } }>;
+        choices?: Array<{ text?: string; message?: { content?: string } }>;
       };
-      const suggestion = data?.choices?.[0]?.message?.content?.trim() ?? '';
+      const suggestion =
+        protocol === 'deepseek-fim'
+          ? data?.choices?.[0]?.text?.trim() ?? ''
+          : data?.choices?.[0]?.message?.content?.trim() ?? '';
       return { suggestion };
     } finally {
       clearTimeout(timeout);
     }
   }
+}
+
+/** 按协议构造请求体。FIM 用 prompt/suffix，绝不发送 messages；Chat 用 messages。 */
+function buildBody(
+  req: AiCompletionRequest,
+  config: AiConfig,
+  protocol: 'deepseek-fim' | 'openai-chat',
+  maxTokens: number,
+): Record<string, unknown> {
+  if (protocol === 'deepseek-fim') {
+    return {
+      model: config.model,
+      prompt: req.prefix,
+      suffix: req.suffix ?? '',
+      max_tokens: maxTokens,
+      temperature: 0.2,
+      stream: false,
+    };
+  }
+  return {
+    model: config.model,
+    messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: `Complete the SQL:\n${req.prefix}` },
+    ],
+    max_tokens: maxTokens,
+    temperature: 0.2,
+    stream: false,
+  };
 }
 
 /** HTTP 状态码 → 友好错误。 */

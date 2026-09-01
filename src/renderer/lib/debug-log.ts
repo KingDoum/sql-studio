@@ -99,10 +99,40 @@ export function clearDebugLogs(): void {
   entries.length = 0;
 }
 
-/** 生成可复制的纯文本日志。 */
+/**
+ * 北京时间（UTC+8，Asia/Shanghai）格式化（阶段 4 修复：不再直接显示 UTC）。
+ * 内部 DebugLogEntry.time 继续保存 ISO UTC，仅展示时转北京时间。
+ * 输出形如 `2026-09-01 11:48:34.647`（毫秒保留）。
+ */
+export function formatBeijingTime(isoTime: string): string {
+  const d = new Date(isoTime);
+  if (Number.isNaN(d.getTime())) return isoTime; // 非法时间原样返回
+  const part = new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(d);
+  const get = (type: string) => part.find((p) => p.type === type)?.value ?? '';
+  // zh-CN + hour12:false 个别 ICU 对午夜可能输出 24:xx，归一为 00:xx 与日期保持一致
+  const hour = get('hour') === '24' ? '00' : get('hour');
+  const ms = String(d.getMilliseconds()).padStart(3, '0');
+  return `${get('year')}-${get('month')}-${get('day')} ${hour}:${get('minute')}:${get('second')}.${ms}`;
+}
+
+/** 单条日志的展示行（北京时间 + 级别 + 消息）。 */
+export function formatLogEntryLine(e: DebugLogEntry): string {
+  return `[${formatBeijingTime(e.time)}] [${e.level.toUpperCase()}] ${e.message}${e.detail ? ` | ${e.detail}` : ''}`;
+}
+
+/** 生成可复制的纯文本日志（标题与条目均使用北京时间）。 */
 export function formatDebugLogText(limit = 500): string {
   const tail = entries.slice(-limit);
-  const lines = tail.map((e) => `[${e.time}] [${e.level.toUpperCase()}] ${e.message}${e.detail ? ` | ${e.detail}` : ''}`);
-  const header = `SQL Studio 调试日志（${new Date().toISOString()}）\n共 ${tail.length} 条\n${'─'.repeat(60)}\n`;
+  const lines = tail.map(formatLogEntryLine);
+  const header = `SQL Studio 调试日志（北京时间 ${formatBeijingTime(new Date().toISOString())}）\n共 ${tail.length} 条\n${'─'.repeat(60)}\n`;
   return header + lines.join('\n');
 }

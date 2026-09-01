@@ -400,6 +400,7 @@ input:focus, select:focus, textarea:focus {
 .sidebar-panel.panel-explorer {
   flex: 1;
   min-height: 120px;
+  min-width: 0; /* 阶段 6：允许子内容收缩，内容由内部滚动承担 */
 }
 
 .sidebar-hint {
@@ -560,6 +561,8 @@ input:focus, select:focus, textarea:focus {
   margin: 0;
   padding: 4px 0;
   flex: 1;
+  min-height: 0; /* 阶段 6：连接列表在内容超出时可收缩滚动 */
+  min-width: 0;
   overflow-y: auto;
 }
 
@@ -866,6 +869,9 @@ input:focus, select:focus, textarea:focus {
 .explorer {
   display: flex;
   flex-direction: column;
+  height: 100%; /* 阶段 6：稳定高度约束，子级可收缩滚动 */
+  min-height: 0;
+  min-width: 0;
   overflow: hidden;
   background: var(--color-surface);
   border-right: 1px solid var(--color-border);
@@ -999,6 +1005,38 @@ input:focus, select:focus, textarea:focus {
   list-style: none;
 }
 
+/* 阶段 6：对象浏览器/连接列表滚动条清晰可见（覆盖全局 thin） */
+.db-list,
+.conn-list,
+.table-fields-body {
+  scrollbar-width: auto;
+  scrollbar-color: var(--color-border-strong) var(--color-surface-muted);
+}
+.db-list::-webkit-scrollbar,
+.conn-list::-webkit-scrollbar,
+.table-fields-body::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+.db-list::-webkit-scrollbar-track,
+.conn-list::-webkit-scrollbar-track,
+.table-fields-body::-webkit-scrollbar-track {
+  background: var(--color-surface-muted);
+}
+.db-list::-webkit-scrollbar-thumb,
+.conn-list::-webkit-scrollbar-thumb,
+.table-fields-body::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 6px;
+  border: 2px solid var(--color-surface-muted);
+  min-height: 32px;
+}
+.db-list::-webkit-scrollbar-thumb:hover,
+.conn-list::-webkit-scrollbar-thumb:hover,
+.table-fields-body::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
 .db-list,
 .table-list,
 .col-list {
@@ -1009,7 +1047,10 @@ input:focus, select:focus, textarea:focus {
 
 .db-list {
   flex: 1;
+  min-height: 0; /* 阶段 6：允许收缩，内容由 db-list 统一纵向滚动 */
+  min-width: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 4px 0;
 }
 
@@ -1425,6 +1466,7 @@ input:focus, select:focus, textarea:focus {
 }
 .table-fields-body {
   flex: 1;
+  min-height: 0; /* 阶段 6：字段很多时可收缩并滚动到底部 */
   overflow-y: auto;
   padding: 4px 0;
 }
@@ -1489,6 +1531,7 @@ input:focus, select:focus, textarea:focus {
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  min-width: 0; /* 阶段 5：允许子级（结果区）横向收缩，内容由内部滚动承担 */
 }
 
 .sql-editor-container {
@@ -1607,6 +1650,7 @@ input:focus, select:focus, textarea:focus {
   flex-direction: column;
   max-height: 45vh;
   min-height: 96px;
+  min-width: 0; /* 阶段 5：允许内部横向滚动容器收缩 */
   position: relative;
 }
 
@@ -1831,21 +1875,63 @@ input:focus, select:focus, textarea:focus {
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-height: 0;
+  min-width: 0;
 }
 
 /* 统一横向滚动容器（2026-08-31：表头/筛选/表体共享横向滚动，底部滚动条可拖） */
 .result-grid-scroll {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
+  /* 阶段 6：scroll 自身为 flex 列容器，inner 用 flex:1 取确定高度，
+     规避 flex 子项百分比高度解析失效（否则 grid-body 被内容撑开、纵向滚动失效）。 */
+  display: flex;
+  flex-direction: column;
 }
 .result-grid-inner {
   display: flex;
   flex-direction: column;
-  min-height: 100%;
-  width: max-content;
+  flex: 1;
+  min-height: 0;
+  width: max-content; /* 横向宽度由内容决定（列宽之和），保证可横滚 */
   min-width: 100%;
+}
+
+/* 阶段 5：结果区横向滚动条清晰可见。
+ * 覆盖全局 scrollbar-width: thin，结果区使用正常宽度滚动条（WebKit ≥12px），
+ * thumb/track 颜色有明显对比，用户无需靠猜"底部可以拖"。 */
+.result-grid-scroll,
+.result-grid-scroll .grid-body {
+  scrollbar-width: auto;
+  scrollbar-color: var(--color-border-strong) var(--color-surface-muted);
+}
+.result-grid-scroll::-webkit-scrollbar,
+.result-grid-scroll .grid-body::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+.result-grid-scroll::-webkit-scrollbar-track,
+.result-grid-scroll .grid-body::-webkit-scrollbar-track {
+  background: var(--color-surface-muted);
+}
+.result-grid-scroll::-webkit-scrollbar-thumb,
+.result-grid-scroll .grid-body::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 6px;
+  border: 2px solid var(--color-surface-muted);
+  min-height: 32px;
+  min-width: 32px;
+}
+.result-grid-scroll::-webkit-scrollbar-thumb:hover,
+.result-grid-scroll .grid-body::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+.result-grid-scroll::-webkit-scrollbar-corner,
+.result-grid-scroll .grid-body::-webkit-scrollbar-corner {
+  background: var(--color-surface-muted);
 }
 
 .grid-header {
@@ -1853,10 +1939,8 @@ input:focus, select:focus, textarea:focus {
   border-bottom: 1px solid var(--color-border);
   background: var(--color-surface-muted);
   flex-shrink: 0;
-  position: sticky;
-  left: 0;
-  top: 0;
-  z-index: 2;
+  /* 阶段 5：表头与筛选行/数据体共享统一横向滚动源，禁止 sticky left
+     （sticky left 会让表头在横滚时不跟随内容，破坏三行对齐）。 */
 }
 
 .grid-header-cell {
@@ -1945,6 +2029,7 @@ input:focus, select:focus, textarea:focus {
 .grid-body {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   overflow-y: auto;
   overflow-x: hidden;
   background: var(--color-bg);
@@ -1996,6 +2081,25 @@ input:focus, select:focus, textarea:focus {
   text-align: center;
   font-size: 12px;
   color: var(--color-text-secondary);
+}
+
+/* 阶段 5：columns 存在但 0 行时的状态区（仍允许横向滚动查看列） */
+.grid-zero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 20px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  min-width: 100%;
+  box-sizing: border-box;
+}
+
+.grid-zero-hint {
+  font-size: 11px;
+  color: var(--color-text-muted);
 }
 
 .grid-toast {
@@ -2167,6 +2271,8 @@ input:focus, select:focus, textarea:focus {
 
 .modal-body {
   flex: 1;
+  min-height: 0; /* 阶段 6：弹窗内部区域可收缩（数据预览等富内容场景） */
+  min-width: 0;
   overflow-y: auto;
   padding: 8px 0;
 }
@@ -2499,19 +2605,28 @@ input:focus, select:focus, textarea:focus {
   color: var(--color-text-secondary);
 }
 
-.ai-settings-field input {
+.ai-settings-field input,
+.ai-settings-field select {
   padding: 5px 8px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
   background: var(--color-surface-muted);
   color: var(--color-text);
   font-size: 12px;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   outline: none;
 }
 
-.ai-settings-field input:focus {
+.ai-settings-field input:focus,
+.ai-settings-field select:focus {
   border-color: var(--color-primary);
+}
+
+/* 阶段 3：API Key 已配置提示（只展示布尔状态，不泄露内容） */
+.ai-settings-key-state {
+  font-size: 11px;
+  color: var(--color-success);
+  font-style: normal;
 }
 
 .ai-settings-btn {
@@ -2561,25 +2676,45 @@ input:focus, select:focus, textarea:focus {
 
 .preview-body {
   flex: 1;
-  min-height: 260px;
+  min-height: 0; /* 阶段 6：允许收缩，避免被内容撑开而丢失内部滚动 */
+  min-width: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   padding: 0;
 }
 
-/* 预览内部支持横向滚动（2026-08-31：列多时可横滚查看全列） */
+/* 阶段 6：预览弹窗的 body 必须是 flex 列容器，preview-body 的 flex:1 才生效；
+   否则 preview-body 会被 500 行内容直接撑开（grid-body 纵向滚动失效）。 */
+.preview-modal .modal-body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+
+/* 预览内部支持横向滚动（2026-08-31：列多时可横滚查看全列；阶段 6：补足 flex 约束） */
 .preview-body .result-grid-wrap {
+  flex: 1;
+  min-height: 0;
   min-width: 0;
 }
 .preview-body .result-grid-scroll {
-  overflow-x: auto;
-}
-
-.preview-body .result-panel {
-  max-height: none;
-  border-top: none;
   flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.preview-body .grid-body {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+/* 数据体保留纵向滚动（阶段 6：row 很多时 grid-body 内部滚动，不污染外层） */
+.preview-body .grid-body {
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .preview-truncated {

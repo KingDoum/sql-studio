@@ -37,9 +37,72 @@ describe('ResultGrid', () => {
     vi.restoreAllMocks();
   });
 
-  it('空结果展示空提示', () => {
-    renderGrid([]);
+  it('columns 为空 → 显示空结果提示', () => {
+    render(<ResultGrid columns={[]} rows={[]} />);
     expect(screen.getByText('（空结果集）')).toBeTruthy();
+  });
+
+  it('columns 为空但 rows 非空 → 空结果', () => {
+    render(<ResultGrid columns={[]} rows={[[1]]} />);
+    expect(screen.getByText('（空结果集）')).toBeTruthy();
+  });
+
+  it('阶段5：columns 存在但 rows 为空 → 显示表头/筛选/0 行状态（不再直接返回空结果）', () => {
+    const { container } = renderGrid([]);
+    // 表头仍然可见
+    expect(screen.getByText('id')).toBeTruthy();
+    expect(screen.getByText('name')).toBeTruthy();
+    // 筛选行可见
+    expect(container.querySelector('.grid-filter')).toBeTruthy();
+    // 0 行状态
+    expect(screen.getByText('（0 行）')).toBeTruthy();
+    // 统一横向滚动容器存在（允许横向滚动查看列）
+    expect(container.querySelector('.result-grid-scroll')).toBeTruthy();
+    // 不再出现"空结果集"占位
+    expect(screen.queryByText('（空结果集）')).toBeNull();
+  });
+
+  it('阶段5：20 列以上时滚动容器存在且内层宽度为列宽之和', () => {
+    const cols: ColumnMeta[] = Array.from({ length: 24 }, (_, i) => ({
+      name: `col${i}`,
+      type: 'varchar',
+      nullable: true,
+      isPrimary: false,
+      isUnique: false,
+    }));
+    const { container } = render(<ResultGrid columns={cols} rows={[[...Array(24).fill('x')]]} />);
+    const scroll = container.querySelector('.result-grid-scroll') as HTMLElement;
+    const inner = container.querySelector('.result-grid-inner') as HTMLElement;
+    expect(scroll).toBeTruthy();
+    expect(inner).toBeTruthy();
+    // 内层宽度 >= 列宽之和（24 列 * 默认 150px = 3600px）
+    expect(parseInt(inner.style.minWidth, 10)).toBeGreaterThanOrEqual(24 * 150);
+    // 表头/筛选/数据体三行同宽（同 gridTemplateColumns）
+    const header = container.querySelector('.grid-header') as HTMLElement;
+    const filter = container.querySelector('.grid-filter') as HTMLElement;
+    const row = container.querySelector('.grid-row') as HTMLElement;
+    expect(header.style.gridTemplateColumns).toBeTruthy();
+    expect(header.style.gridTemplateColumns).toBe(filter.style.gridTemplateColumns);
+    if (row) expect(row.style.gridTemplateColumns).toBe(header.style.gridTemplateColumns);
+  });
+
+  it('阶段5：横向滚动后表头/筛选/数据体位置同步（同源 scrollLeft）', () => {
+    const cols: ColumnMeta[] = Array.from({ length: 24 }, (_, i) => ({
+      name: `c${i}`,
+      type: 'varchar',
+      nullable: true,
+      isPrimary: false,
+      isUnique: false,
+    }));
+    const { container } = render(<ResultGrid columns={cols} rows={[[...Array(24).fill('v')]]} />);
+    const scroll = container.querySelector('.result-grid-scroll') as HTMLElement;
+    const header = container.querySelector('.grid-header') as HTMLElement;
+    const filter = container.querySelector('.grid-filter') as HTMLElement;
+    const body = container.querySelector('.grid-body') as HTMLElement;
+    // 共享同一横向滚动源：表头/筛选/数据体都位于 result-grid-scroll 容器内
+    expect(scroll.contains(header)).toBe(true);
+    expect(scroll.contains(filter)).toBe(true);
+    expect(scroll.contains(body)).toBe(true);
   });
 
   it('渲染表头和数据行', () => {

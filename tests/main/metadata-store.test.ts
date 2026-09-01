@@ -141,3 +141,54 @@ describe('迁移与 settings', () => {
     expect(store.getSetting('missing')).toBeNull();
   });
 });
+
+describe('AiConfig 与 AiPublicConfig（阶段 3：API Key 不泄露给 Renderer）', () => {
+  const cfg = {
+    enabled: true,
+    baseUrl: 'https://api.deepseek.com/beta',
+    model: 'deepseek-v4-pro',
+    apiKey: 'sk-secret-123',
+    protocol: 'deepseek-fim' as const,
+  };
+
+  it('保存后 getAiConfig（内部）能解密取回 Key', () => {
+    store.setAiConfig(cfg);
+    const internal = store.getAiConfig();
+    expect(internal?.apiKey).toBe('sk-secret-123');
+    expect(internal?.protocol).toBe('deepseek-fim');
+  });
+
+  it('getAiPublicConfig 不含 apiKey，仅 apiKeyConfigured=true', () => {
+    store.setAiConfig(cfg);
+    const pub = store.getAiPublicConfig();
+    expect(pub).not.toBeNull();
+    expect((pub as any).apiKey).toBeUndefined();
+    expect(pub?.apiKeyConfigured).toBe(true);
+    expect(pub?.baseUrl).toBe('https://api.deepseek.com/beta');
+    expect(pub?.enabled).toBe(true);
+  });
+
+  it('未配置 Key 时 getAiPublicConfig.apiKeyConfigured=false', () => {
+    store.setAiConfig({ ...cfg, apiKey: '' });
+    const pub = store.getAiPublicConfig();
+    expect(pub?.apiKeyConfigured).toBe(false);
+  });
+
+  it('空 Key 保存时保留旧 Key（不意外清空）', () => {
+    store.setAiConfig(cfg);
+    // 用空 apiKey 保存 → 旧 Key 保留
+    store.setAiConfig({ ...cfg, apiKey: '' });
+    expect(store.getAiConfig()?.apiKey).toBe('sk-secret-123');
+    expect(store.getAiPublicConfig()?.apiKeyConfigured).toBe(true);
+  });
+
+  it('新 Key 保存后替换旧 Key', () => {
+    store.setAiConfig(cfg);
+    store.setAiConfig({ ...cfg, apiKey: 'sk-new-key' });
+    expect(store.getAiConfig()?.apiKey).toBe('sk-new-key');
+  });
+
+  it('getAiPublicConfig 在无配置时返回 null', () => {
+    expect(store.getAiPublicConfig()).toBeNull();
+  });
+});

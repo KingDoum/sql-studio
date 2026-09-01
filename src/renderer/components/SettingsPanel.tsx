@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'react';
 import { Sun, Moon, Bug, Copy, Check, Trash2 } from 'lucide-react';
 import type { ThemeMode } from '@shared/types';
-import { getDebugLogEntries, formatDebugLogText, clearDebugLogs, type DebugLogEntry } from '@renderer/lib/debug-log';
+import { getDebugLogEntries, formatDebugLogText, formatLogEntryLine, clearDebugLogs, type DebugLogEntry } from '@renderer/lib/debug-log';
 import { Modal } from './Modal';
 
 export interface SettingsPanelProps {
@@ -164,7 +164,7 @@ export function SettingsPanel({
                   ? '（暂无日志，使用过程中产生的 console / 错误将显示在这里）'
                   : logs
                       .slice(-200)
-                      .map((e) => `[${e.time.slice(11, 19)}] [${e.level.toUpperCase()}] ${e.message}${e.detail ? ` | ${e.detail}` : ''}`)
+                      .map(formatLogEntryLine)
                       .join('\n')}
               </pre>
               <p className="settings-debug-hint">

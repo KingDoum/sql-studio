@@ -132,6 +132,14 @@ export const SqlEditor = React.forwardRef<SqlEditorHandle, SqlEditorProps>(funct
   const [schemaLoading, setSchemaLoading] = useState(false);
   const [aiState, setAiState] = useState<AiProviderState>({ enabled: false, config: null });
   const aiProviderRef = useRef<ReturnType<typeof createAiInlineProvider> | null>(null);
+  /** registerInlineCompletionsProvider 返回的 disposable（卸载/重新注册时 dispose）。 */
+  const aiDisposableRef = useRef<{ dispose(): void } | null>(null);
+  /** AI 配置的实时镜像（供 onMount/sync 闭包读取最新值，避免时序闭包陈旧）。 */
+  const aiStateRef = useRef<AiProviderState>(aiState);
+  aiStateRef.current = aiState;
+  /** 最新 syncAiProvider 引用（onMount 用 ref 调用，避免闭包陈旧）。 */
+  const syncAiProviderRef = useRef<() => void>(() => {});
+  const disposeAiProviderRef = useRef<() => void>(() => {});
 
   // 连接切换 → 预取 schema 快照 → 重建补全 + tokenizer
   useEffect(() => {
@@ -159,35 +167,56 @@ export const SqlEditor = React.forwardRef<SqlEditorHandle, SqlEditorProps>(funct
     fetchAiConfig().then(setAiState);
   }, [aiSettingsVersion]);
 
-  // 组件卸载时清理快捷键
+  // 组件卸载时清理快捷键 + AI provider（不依赖 Monaco 挂载顺序）
   useEffect(() => {
-    return () => onCleanupRef.current?.();
+    return () => {
+      onCleanupRef.current?.();
+      disposeAiProviderRef.current?.();
+    };
   }, []);
+
+  /**
+   * 统一 AI provider 注册/同步入口（阶段 2 修复注册时序）。
+   * 由两个场景共同调用，保证「AI 配置先到、Monaco 后挂载」和「Monaco 先挂载、AI 配置后到」都正确注册：
+   *   1. onMount：Monaco 挂载完成后调用（若 AI 配置已就绪则立即注册）；
+   *   2. aiState 变化 effect：AI 配置加载/更新后调用（若 Monaco 已挂载则立即注册）。
+   * 幂等：先 dispose 旧 provider 与 disposable 再注册，StrictMode 双重调用不会重复注册。
+   */
+  const disposeAiProvider = useCallback(() => {
+    aiDisposableRef.current?.dispose();
+    aiDisposableRef.current = null;
+    aiProviderRef.current?.dispose();
+    aiProviderRef.current = null;
+  }, []);
+
+  const syncAiProvider = useCallback(() => {
+    const monaco = monacoRef.current;
+    if (!monaco) return; // Monaco 未挂载：等 onMount 再注册
+    const state = aiStateRef.current;
+    disposeAiProvider();
+    const provider = createAiInlineProvider(state);
+    aiProviderRef.current = provider as unknown as ReturnType<typeof createAiInlineProvider>;
+    // 注册 inline completions provider
+    aiDisposableRef.current = monaco.languages.registerInlineCompletionsProvider('sql', provider);
+    // 同步 inlineSuggest 设置（AI 开启时启用行内建议，关闭时禁用）
+    try {
+      editorRef.current?.updateOptions({ inlineSuggest: { enabled: state.enabled } });
+    } catch { /* 静默，不影响核心功能 */ }
+  }, [disposeAiProvider]);
+
+  // AI 状态变化 → 重新注册 inline provider（含 AI 配置先返回、Monaco 后挂载时序）
+  useEffect(() => {
+    syncAiProvider();
+  }, [aiState, syncAiProvider]);
+
+  // 保持 ref 追踪最新回调（onMount 闭包中调用）
+  syncAiProviderRef.current = syncAiProvider;
+  disposeAiProviderRef.current = disposeAiProvider;
 
   // 字号变化时同步到 Monaco 编辑器
   useEffect(() => {
     editorRef.current?.updateOptions({ fontSize });
   }, [fontSize]);
-
-  // AI 状态变化 → 重新注册 inline provider
-  useEffect(() => {
-    const monaco = monacoRef.current;
-    if (!monaco) return;
-    // 先 dispose 旧的
-    aiProviderRef.current?.dispose();
-    const provider = createAiInlineProvider(aiState);
-    aiProviderRef.current = provider as unknown as ReturnType<typeof createAiInlineProvider>;
-    // 注册 inline completions provider
-    const disposable = monaco.languages.registerInlineCompletionsProvider('sql', provider);
-    // 同步 inlineSuggest 设置（AI 开启时启用行内建议，关闭时禁用）
-    try {
-      editorRef.current?.updateOptions({ inlineSuggest: { enabled: aiState.enabled } });
-    } catch { /* 静默，不影响核心功能 */ }
-    return () => {
-      disposable.dispose();
-      provider.dispose();
-    };
-  }, [aiState]);
 
   // 获取执行语句：选区优先；无选区时执行整个编辑器内容（支持多条 `;` 分隔的语句都出结果）
   const getExecuteSql = useCallback((): string => {
@@ -330,6 +359,9 @@ const beforeMount: BeforeMount = useCallback((monaco) => {
     editor.updateOptions({ theme: theme === 'light' ? 'sql-studio-light' : 'sql-studio-dark' });
     // 初装 tokenizer（空 schema）
     applyTokenizer(monaco, null);
+    // 阶段 2 修复：Monaco 挂载时若 AI 配置已加载，立即注册 inline provider。
+    // 用 ref 保持最新 syncAiProvider，避免 onMount 闭包陈旧导致注册失效。
+    syncAiProviderRef.current?.();
     // 注册快捷键（onMount 时 editor/monaco 已就绪，避免 useEffect 依赖 ref 空跑）
     const action1 = editor.addAction({
       id: 'sql-studio.execute',
@@ -349,11 +381,23 @@ const beforeMount: BeforeMount = useCallback((monaco) => {
       keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS],
       run: () => saveRef.current?.(),
     });
+    // 手动触发 AI 行内补全（兜底：自动触发失效时可用；供测试与快捷键）
+    const action4 = editor.addAction({
+      id: 'sql-studio.ai-trigger',
+      label: '触发 AI 补全',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Space],
+      run: () => {
+        try {
+          editor.trigger('sql-studio.ai-trigger', 'editor.action.inlineSuggest.trigger', {});
+        } catch { /* 编辑器未就绪时静默 */ }
+      },
+    });
     // 清理：组件卸载时 dispose 快捷键
     onCleanupRef.current = () => {
       action1.dispose();
       action2.dispose();
       action3.dispose();
+      action4.dispose();
       // dispose 全局补全 provider 并重置守卫（组件卸载后可安全重挂载）
       if (globalCompletionDisposable) {
         globalCompletionDisposable.dispose();
@@ -363,7 +407,6 @@ const beforeMount: BeforeMount = useCallback((monaco) => {
     };
     // 聚焦
     editor.focus();
-    // AI provider 由 [aiState] effect 统一注册/清理，不在 onMount 重复注册（避免泄漏）
   }, []);
 
   // 暴露 insertTextAtCursor 给父组件（体验优化：双击字段插入）

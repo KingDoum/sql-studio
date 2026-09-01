@@ -151,7 +151,8 @@ export function ResultGrid({ columns, rows, showFilter = true }: ResultGridProps
     toastTimer.current = setTimeout(() => setToast(null), 1600);
   };
 
-  if (!columns.length || !rows.length) {
+  // 阶段 5：columns 为空 → 显示空结果；columns 存在但 rows 为空 → 显示表头/筛选/0 行状态，允许横向滚动
+  if (!columns.length) {
     return <div className="grid-empty">（空结果集）</div>;
   }
 
@@ -204,33 +205,41 @@ export function ResultGrid({ columns, rows, showFilter = true }: ResultGridProps
           )}
           {/* 数据体（虚拟滚动，同列宽；横向滚动交由外层容器，表头联动） */}
           <div className="grid-body" ref={handleBodyRef} onScroll={handleBodyScroll}>
-            <div className="grid-spacer" style={{ height: visibleRows.length * ROW_HEIGHT, minWidth }}>
-              {rendered.map((row, ri) => {
-                const absIdx = start + ri;
-                return (
-                  <div
-                    key={absIdx}
-                    className="grid-row"
-                    style={{ top: absIdx * ROW_HEIGHT, gridTemplateColumns: gridTemplate, minWidth }}
-                  >
-                    {row.map((cell, ci) => {
-                      const isNull = cell === null || cell === undefined;
-                      const text = formatCell(cell);
-                      return (
-                        <div
-                          key={`${absIdx}-${ci}`}
-                          className={`grid-cell${isNull ? ' null-cell' : ''}`}
-                          title={text.length > 120 ? text : undefined}
-                          onDoubleClick={() => void copyCell(cell)}
-                        >
-                          {isNull ? 'NULL' : text}
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
-            </div>
+            {visibleRows.length === 0 ? (
+              // 阶段 5：columns 存在但 0 行 → 显示 0 行状态（仍允许横向滚动查看列）
+              <div className="grid-zero" style={{ minWidth }}>
+                <span>（0 行）</span>
+                <span className="grid-zero-hint">表头 / 筛选行可横向滚动查看全部列</span>
+              </div>
+            ) : (
+              <div className="grid-spacer" style={{ height: visibleRows.length * ROW_HEIGHT, minWidth }}>
+                {rendered.map((row, ri) => {
+                  const absIdx = start + ri;
+                  return (
+                    <div
+                      key={absIdx}
+                      className="grid-row"
+                      style={{ top: absIdx * ROW_HEIGHT, gridTemplateColumns: gridTemplate, minWidth }}
+                    >
+                      {row.map((cell, ci) => {
+                        const isNull = cell === null || cell === undefined;
+                        const text = formatCell(cell);
+                        return (
+                          <div
+                            key={`${absIdx}-${ci}`}
+                            className={`grid-cell${isNull ? ' null-cell' : ''}`}
+                            title={text.length > 120 ? text : undefined}
+                            onDoubleClick={() => void copyCell(cell)}
+                          >
+                            {isNull ? 'NULL' : text}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </div>

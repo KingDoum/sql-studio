@@ -18,6 +18,7 @@ import type {
   CompletionContext,
   ConnectionSummary,
   QueryResult,
+  AiPublicConfig,
 } from '@shared/types';
 
 describe('IPC 契约', () => {
@@ -147,5 +148,20 @@ describe('AI 补全接口预留（V2 契约）', () => {
 
   it('ai:complete 占位 channel 已定义（V1 不注册，仅类型占位）', () => {
     expect(IPC_CHANNELS['ai:complete']).toBe('ai:complete');
+  });
+
+  it('settings:getAiConfig 响应类型为 AiPublicConfig（阶段 3：无 apiKey）', () => {
+    const pub: AiPublicConfig = {
+      enabled: true,
+      baseUrl: 'https://api.deepseek.com/beta',
+      model: 'deepseek-v4-pro',
+      protocol: 'deepseek-fim',
+      apiKeyConfigured: true,
+    };
+    // 编译期保证：AiPublicConfig 上不存在 apiKey 字段
+    expect((pub as unknown as Record<string, unknown>).apiKey).toBeUndefined();
+    // 契约映射确实指向 AiPublicConfig | null
+    const resp: IpcResponseMap['settings:getAiConfig'] = pub;
+    expect(resp.apiKeyConfigured).toBe(true);
   });
 });

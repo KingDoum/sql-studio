@@ -25,6 +25,7 @@ import type {
   AiCompletionRequest,
   AiCompletionResponse,
   AiConfig,
+  AiPublicConfig,
   ShowSaveDialogOptions,
   ShowOpenDialogOptions,
 } from './types';
@@ -188,7 +189,7 @@ export interface IpcResponseMap {
   'ai:complete': AiCompletionResponse;
 
   // V2 AI 设置
-  'settings:getAiConfig': AiConfig | null;
+  'settings:getAiConfig': AiPublicConfig | null;
   'settings:setAiConfig': { saved: boolean };
 
   // 通用设置

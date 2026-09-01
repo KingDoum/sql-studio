@@ -4,6 +4,12 @@
 > 项目路径：`/vol1/1000/docker/Services/deepseek-harness/DSH_projects/sql_plus/SQL_project`
 > 适用对象：能够读取源码、修改文件、运行命令并回传证据的开发 AI。
 > 编写日期：2026-08-30
+>
+> **2026-09-01 执行记录（本轮运行时正确性修复，7 阶段）：** 已在同一会话按「消息中的阶段 1-7」执行完毕——
+> FIM 补全协议、API Key 隐藏、调试日志北京时间、结果区横向滚动、对象浏览器/预览/表字段导航滚动稳定性。
+> `npm run typecheck` ✅ / `npm test` ✅（32 文件 / 398 用例）/ `npm run build` ✅ / 无头 E2E 三脚本 ✅。
+> 真实 DeepSeek API 调用与 Windows Electron GUI 验收在 NAS 无头环境无法执行，标记为**「已实现未验证」**，
+> 未写为「已完成」。本文件下文 S0-S7 为本轮之前一轮（2026-08-30）的指令，仍作为历史基准保留。
 
 ## 0. 总指令
 

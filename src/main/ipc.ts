@@ -296,8 +296,8 @@ export function registerIpc(deps: IpcDeps, ipcMain: IpcMain): void {
     return service.complete(arg, config);
   });
 
-  // ── AI 设置（V2）──
-  handle(IPC_CHANNELS['settings:getAiConfig'], () => deps.metadataStore.getAiConfig());
+  // ── AI 设置（V2，阶段 3：Renderer 只见 AiPublicConfig，不含 apiKey）──
+  handle(IPC_CHANNELS['settings:getAiConfig'], () => deps.metadataStore.getAiPublicConfig());
   handle(IPC_CHANNELS['settings:setAiConfig'], (arg) => {
     deps.metadataStore.setAiConfig(arg);
     return { saved: true };

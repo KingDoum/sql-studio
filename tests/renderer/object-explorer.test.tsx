@@ -95,4 +95,32 @@ describe('ObjectExplorer', () => {
     render(<ObjectExplorer connectionId="c2" />);
     await waitFor(() => expect(firstCall + 1).toBeLessThanOrEqual(store['schema:databases'].mock.calls.length));
   });
+
+  it('阶段6：大量数据库/表时由 .db-list 统一纵向滚动（结构调整为单滚动容器）', async () => {
+    // 40 个库，每库 5 张表，模拟内容超出的场景
+    const manyDbs = Array.from({ length: 40 }, (_, i) => `db_${i}`);
+    const manyTables: TableMeta[] = Array.from({ length: 5 }, (_, i) => ({ name: `t_${i}`, type: 'table', isView: false }));
+    (window as unknown as { sqlStudio: { [k: string]: () => Promise<unknown> } }).sqlStudio = {
+      'schema:databases': vi.fn(async () => manyDbs),
+      'schema:tables': vi.fn(async () => manyTables),
+      'schema:columns': vi.fn(async () => COLUMNS),
+    };
+    const { container } = render(<ObjectExplorer connectionId="c1" />);
+    // 全部库渲染（第一条与最后一条都在）
+    expect(await screen.findByText(/db_0/)).toBeTruthy();
+    expect(await screen.findByText(/db_39/)).toBeTruthy();
+    // 结构约束：.explorer（高度容器）→ .db-list（唯一顶层滚动容器）
+    const explorer = container.querySelector('.explorer') as HTMLElement;
+    expect(explorer).toBeTruthy();
+    const dbList = container.querySelector('.db-list') as HTMLElement;
+    expect(dbList).toBeTruthy();
+    // 展开一个库，确认表/字段列表是 db-list 的子级（共享同一滚动源），而非独立滚动区
+    fireEvent.click(await screen.findByText(/db_0/));
+    expect(await screen.findByText(/t_0/)).toBeTruthy();
+    const tableList = container.querySelector('.table-list') as HTMLElement;
+    // 嵌套列表不另设内联 overflow（避免多个 ul 各自抢滚动；CSS 由真实浏览器 e2e 验证）
+    expect(tableList).toBeTruthy();
+    expect(tableList?.getAttribute('style')).toBeNull();
+    expect(dbList.contains(tableList)).toBe(true);
+  });
 });

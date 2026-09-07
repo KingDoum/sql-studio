@@ -4,10 +4,10 @@
 > 实施日期：2026-09-07 ｜ 实施环境：NAS Linux x64（无头）
 
 ## 1. 基本信息
-- 版本/提交：master @ 待提交（S1-S6 本轮改动）
-- 构建时间：2026-09-07
+- 版本/提交：master @ 39744a3（已推送 GitHub Actions 构建成功）
+- 构建时间：2026-09-07（GitHub Actions run 34104297607：windows-2022 + ubuntu-latest 双 job 均 success）
 - 验收环境：NAS Linux x64（Node 22.23.2 / npm 10.9.8 / Electron 37.10.3 / better-sqlite3 11.10.0）
-- Windows 版本：未验证（需 Windows 图形环境）
+- Windows 版本：未在 Windows 真机验证（打包产物已生成并归档，见下）
 - Electron 版本：37.10.3
 - electron-log 实际版本：5.4.4（package.json 声明 `^5.2.0`）
 
@@ -20,6 +20,14 @@
 - Main 持久日志：新增 `persistent-log-service.ts`（electron-log 5.4.4，JSON 行 format、自定义轮转归档、10MiB/5 归档/14 天/60MiB、受控路径、read 最近 500 条、clear 只清受控）+ `log-redaction.ts` 双层脱敏；Main 崩溃事件（uncaughtException/unhandledRejection/render-process-gone/unresponsive/did-fail-load）。
 - Renderer 日志桥：新增 `persistent-log-bridge.ts`（warn/error 即时、debug/info 批量 20 条或 250ms、重入防护）；debug-log.ts 改造为双通道门面。
 - 设置面板日志能力：SettingsPanel 改经 `logs:read`（最近 500 条，北京时间展示）/ `logs:clear` / 复制（基于 Main 返回脱敏数据）。
+
+## 2.1 发布产物验证（2026-09-07 GitHub Actions，补 S6 缺口）
+- 推送：`133e6a0..39744a3 master -> master`，触发 Build and Package（run 34104297607）。
+- 双 job 全绿：build-windows（typecheck / npm test / build / electron-builder --win，windows-2022）+ build-linux（同测试 + AppImage/deb）。
+- 产物：`SQL Studio Setup 0.1.0.exe`（140,968,428 B，NSIS x64）+ win-unpacked + AppImage/deb。
+- asar 内容校验：`workspace-recovery-store`/`persistent-log-service`/`log-redaction`/`workspace:save`/`logs:append` 全部在 app.asar；`electron-log` 完整模块（main.js/node.js/src/）已打包；better-sqlite3 原生模块（build/Release/better_sqlite3.node + bin/win32-x64-136，ABI 136 = Electron 37）已在 asar 内，npmRebuild 正确重编译。
+- 打包产物实测（Linux 免安装版，xvfb）：应用启动 → 持久日志系统真实工作（`userData/SQL Studio/logs/main.log` 落盘：`app.starting` → `process.unhandledRejection` → `app.quitting` 全链路，JSON 行格式、脱敏生效无凭据）。注：NAS glibc 2.3x 低于 GitHub runner 编译目标，Linux 包在本机无法加载原生模块（GLIBC_2.38 not found）——这是 NAS 宿主限制，不影响 Windows 目标平台；Windows 包需 Windows 真机验收（§16.7）。
+- 归档：`DSH_projects/sql_plus/SQL Studio Setup 0.1.0.exe.20260907`（新包，含 S1-S6 全部代码）；旧 8-20 包保留。
 
 ## 3. 核心不变量验证
 - 自动保存未写真实 .sql：**通过**——E2E `A-不自动写文件` 断言恢复+编辑全流程 `script:save` 零调用；单测 WS-12/13。
@@ -35,7 +43,8 @@
 - Main：✅ workspace-recovery-store 18 用例 / persistent-log-service 13 用例 / log-redaction 13 用例 / metadata-store 25 用例 / ipc 14 用例
 - Renderer：✅ workspace-persistence 10 用例（RD-01~12）/ workspace-recovery 9 用例（WS-07/08/20~22）/ persistent-log-bridge 7 用例（LG-02~05/23）/ app 12 用例（WS-02/06/12/13/19）
 - 无头 E2E：✅ workspace-recovery-check 9/9 + ui-layout / ui-state / scroll / appearance-and-rate-limit 全绿
-- Windows Electron 真机：⏳ 未验证（NAS 无头限制）
+- GitHub Actions（windows-2022 + ubuntu-latest）：✅ typecheck / npm test / build / electron-builder 双平台全绿（run 34104297607）
+- Windows Electron 真机：⏳ 未验证（需 Windows 图形环境；包已生成归档）
 - 失败和跳过项：无失败；Windows 真机项跳过
 
 ## 5. 场景验收

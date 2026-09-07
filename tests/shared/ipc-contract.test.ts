@@ -19,6 +19,12 @@ import type {
   ConnectionSummary,
   QueryResult,
   AiPublicConfig,
+  WorkspaceLoadResult,
+  WorkspaceSaveResult,
+  WorkspaceClearResult,
+  LogsAppendResult,
+  LogsReadResult,
+  LogsClearResult,
 } from '@shared/types';
 
 describe('IPC 契约', () => {
@@ -79,6 +85,12 @@ describe('IPC 契约', () => {
       'dialog:showSaveDialog',
       'dialog:showOpenDialog',
       'shell:showItemInFolder',
+      'workspace:load',
+      'workspace:save',
+      'workspace:clear',
+      'logs:append',
+      'logs:read',
+      'logs:clear',
     ];
     expect(channels.length).toBe(Object.values(IPC_CHANNELS).length);
   });
@@ -176,5 +188,105 @@ describe('AI 补全接口预留（V2 契约）', () => {
       rateLimitCooldownMs: 15_000,
       requestTimeoutMs: 12_000,
     });
+  });
+});
+
+describe('工作区与持久日志通道（自动保存方案 SH-01/SH-02）', () => {
+  it('6 个新 channel 均已登记且唯一', () => {
+    for (const ch of [
+      'workspace:load',
+      'workspace:save',
+      'workspace:clear',
+      'logs:append',
+      'logs:read',
+      'logs:clear',
+    ]) {
+      expect(IPC_CHANNELS[ch as keyof typeof IPC_CHANNELS]).toBe(ch);
+    }
+    const values = Object.values(IPC_CHANNELS);
+    expect(new Set(values).size).toBe(values.length);
+  });
+
+  it('请求与响应映射均覆盖全部新 channel（SH-01）', () => {
+    const channels: IpcChannel[] = [
+      'workspace:load',
+      'workspace:save',
+      'workspace:clear',
+      'logs:append',
+      'logs:read',
+      'logs:clear',
+    ];
+    for (const ch of channels) {
+      // 编译期保证：请求/响应映射必须存在对应 key（缺失会类型报错）
+      const req: keyof IpcRequestMap = ch;
+      const res: keyof IpcResponseMap = ch;
+      expect(typeof req).toBe('string');
+      expect(typeof res).toBe('string');
+    }
+  });
+
+  it('workspace:load 响应类型结构正确', () => {
+    const r: IpcResponseMap['workspace:load'] = {
+      snapshot: null,
+      recoveredTabCount: 0,
+      quarantinedTabCount: 0,
+      warnings: [],
+    };
+    // 编译期保证：也接受非 null 快照形态
+    const full: WorkspaceLoadResult = {
+      snapshot: {
+        workspaceId: 'default',
+        schemaVersion: 1,
+        revision: 1,
+        activeTabId: null,
+        currentConnectionId: null,
+        createdAt: '2026-09-07T00:00:00.000Z',
+        updatedAt: '2026-09-07T00:00:00.000Z',
+        tabs: [],
+      },
+      recoveredTabCount: 0,
+      quarantinedTabCount: 0,
+      warnings: [],
+    };
+    expect(r.snapshot).toBeNull();
+    expect(full.snapshot?.workspaceId).toBe('default');
+  });
+
+  it('workspace:save 请求/响应结构正确', () => {
+    const req: IpcRequestMap['workspace:save'] = {
+      snapshot: {
+        workspaceId: 'default',
+        schemaVersion: 1,
+        revision: 1,
+        activeTabId: null,
+        currentConnectionId: null,
+        createdAt: '2026-09-07T00:00:00.000Z',
+        updatedAt: '2026-09-07T00:00:00.000Z',
+        tabs: [],
+      },
+    };
+    expect(req.snapshot.revision).toBeGreaterThanOrEqual(0);
+    const res: WorkspaceSaveResult = {
+      saved: true,
+      acceptedRevision: 1,
+      storedRevision: 1,
+      reason: 'saved',
+    };
+    expect(res.saved).toBe(true);
+  });
+
+  it('logs:* 请求/响应结构正确（默认 limit 500）', () => {
+    const readReq: IpcRequestMap['logs:read'] = {};
+    expect(readReq.limit).toBeUndefined();
+    const appendRes: LogsAppendResult = { accepted: 1, dropped: 0 };
+    const readRes: LogsReadResult = {
+      entries: [],
+      timezone: 'Asia/Shanghai',
+      truncated: false,
+    };
+    const clearRes: LogsClearResult = { cleared: true, removedFileCount: 1 };
+    expect(appendRes.accepted).toBe(1);
+    expect(readRes.timezone).toBe('Asia/Shanghai');
+    expect(clearRes.cleared).toBe(true);
   });
 });

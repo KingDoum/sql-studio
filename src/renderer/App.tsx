@@ -22,7 +22,13 @@ import { FavoritesPanel } from '@renderer/components/FavoritesPanel';
 import { AiSettingsPanel } from '@renderer/components/AiSettingsPanel';
 import { AppearancePanel } from '@renderer/components/AppearancePanel';
 import { SettingsPanel } from '@renderer/components/SettingsPanel';
-import { ensureDebugLogging } from '@renderer/lib/debug-log';
+import { ensureDebugLogging, setLogSink } from '@renderer/lib/debug-log';
+import { persistentLogBridge } from '@renderer/lib/persistent-log-bridge';
+import {
+  WorkspacePersistenceCoordinator,
+  buildSnapshotFromSource,
+  classifyWorkspaceChange,
+} from '@renderer/lib/workspace-persistence';
 import type { ConnectionSummary, ThemeMode } from '@shared/types';
 import { DataPreviewModal } from '@renderer/components/DataPreviewModal';
 import { Modal } from '@renderer/components/Modal';
@@ -66,6 +72,93 @@ function App() {
   /** 合法主题集合（AppearancePanel 唯一来源）。 */
   const VALID_THEMES: ThemeMode[] = ['dark', 'light', 'titanium'];
 
+  // ── 工作区自动保存与恢复（自动保存方案 §11.2/§14.1）──
+  // 持续协调器实例；App 只订阅 store 变化并转发事件，复杂调度在独立模块
+  const persistenceRef = useRef<WorkspacePersistenceCoordinator | null>(null);
+  if (!persistenceRef.current) {
+    persistenceRef.current = new WorkspacePersistenceCoordinator({
+      buildSnapshot: () =>
+        buildSnapshotFromSource({
+          activeTabId: useWorkspace.getState().activeTabId,
+          currentConnectionId: useWorkspace.getState().currentConnectionId,
+          tabs: useWorkspace.getState().tabs,
+        }),
+      save: (req) => window.sqlStudio['workspace:save'](req),
+      load: () => window.sqlStudio['workspace:load']({ workspaceId: 'default' }),
+    });
+  }
+  const persistence = persistenceRef.current;
+
+  // 启动恢复：load → hydrate（hydrate 后由 store action 保证不恢复执行态）→ 解除屏障
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await persistence.start();
+        if (cancelled) return;
+        if (result.snapshot) {
+          useWorkspace.getState().hydrateFromSnapshot(result.snapshot);
+        }
+        // 恢复失败（无数据/坏快照）也正常启动空工作区，不白屏（§7.5/§11.4）
+      } catch (err) {
+        // 恢复异常：启动空工作区 + 保留诊断（前端日志由 debug-log 捕获）
+        console.error('工作区恢复失败，启动空工作区', err);
+      } finally {
+        if (!cancelled) persistence.resume();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 订阅工作区变化：内容事件 → 500ms 防抖；结构事件 → 立即排队（§7.6）
+  useEffect(() => {
+    const unsub = useWorkspace.subscribe((state, prev) => {
+      const kind = classifyWorkspaceChange(prev, state);
+      if (kind === 'content') persistence.onContentChanged();
+      else if (kind === 'structural') persistence.onStructuralChanged();
+    });
+    return unsub;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 连接失效回退（§11.8/WS-19）：恢复的 currentConnectionId 与连接列表核对，
+  // 已删除/不可用 → 回退 null（不阻止 SQL 文本恢复，不删除任何标签）
+  useEffect(() => {
+    const currentId = useWorkspace.getState().currentConnectionId;
+    if (currentId && connections.length > 0 && !connections.some((c) => c.id === currentId)) {
+      setConnection(null);
+    }
+    // 依赖 connections；恢复赋值 currentConnectionId 也会在此触发核对
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connections, useWorkspace.getState().currentConnectionId]);
+
+  // 窗口关闭：短时 flush（§10.5；即使超时也不阻塞退出）+ 日志桥 flush
+  useEffect(() => {
+    // 注册持久日志桥为 debug-log sink（Renderer → Main 落盘，§12.4）
+    setLogSink((entry) => persistentLogBridge.push(entry));
+    const handleBeforeUnload = () => {
+      persistentLogBridge.flush();
+      void persistence.flush(1500);
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    // 页面隐藏（切换 Tab/最小化）也尝试 flush 日志（§12.6）
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') persistentLogBridge.flush();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      persistence.stop();
+      persistentLogBridge.stop();
+      setLogSink(null);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // 启动时读取主题/调试模式设置并应用
   useEffect(() => {
     void window.sqlStudio['settings:get']({ key: 'theme' }).then((v) => {
@@ -77,6 +170,7 @@ function App() {
       if (v === '1' || v === 'true') {
         setDebugMode(true);
         ensureDebugLogging(true);
+        persistentLogBridge.setDebugMode(true);
       }
     });
     // 读取字体设置
@@ -130,6 +224,7 @@ function App() {
   const handleDebugModeChange = (enabled: boolean) => {
     setDebugMode(enabled);
     ensureDebugLogging(enabled);
+    persistentLogBridge.setDebugMode(enabled);
     void window.sqlStudio['settings:set']({ key: 'debugMode', value: enabled ? '1' : '0' });
   };
   const {

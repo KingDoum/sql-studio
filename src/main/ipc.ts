@@ -22,6 +22,8 @@ import { SqlExporter } from './services/sql-exporter';
 import { CsvExporter } from './services/csv-exporter';
 import { AiService } from './services/ai-service';
 import { FavoritesStore } from './services/favorites-store';
+import { WorkspaceRecoveryStore } from './services/workspace-recovery-store';
+import { PersistentLogService } from './services/persistent-log-service';
 import type { ConnectionConfig, AiConfig } from '@shared/types';
 
 /** 全部依赖（service 实例），由应用入口注入。 */
@@ -34,6 +36,10 @@ export interface IpcDeps {
   excelExporter?: ExcelExporter;
   sqlExporter?: SqlExporter;
   csvExporter?: CsvExporter;
+  /** 工作区恢复存储（S2 起由 index.ts 注入真实实例）。 */
+  workspaceStore?: WorkspaceRecoveryStore;
+  /** 持久日志服务（S4 起由 index.ts 注入真实实例）。 */
+  logService?: PersistentLogService;
 }
 
 /** 统一异常 → 友好错误响应。 */
@@ -343,5 +349,39 @@ export function registerIpc(deps: IpcDeps, ipcMain: IpcMain): void {
     const electron = require('electron') as typeof import('electron');
     electron.shell.showItemInFolder(arg.path);
     return { shown: true };
+  });
+
+  // ── 工作区恢复（自动保存方案；S2 起注入真实 WorkspaceRecoveryStore）──
+  handle(IPC_CHANNELS['workspace:load'], (arg) => {
+    const store = deps.workspaceStore;
+    if (!store) throw new Error('工作区存储未初始化');
+    return store.load(arg.workspaceId);
+  });
+  handle(IPC_CHANNELS['workspace:save'], (arg) => {
+    const store = deps.workspaceStore;
+    if (!store) throw new Error('工作区存储未初始化');
+    return store.save(arg);
+  });
+  handle(IPC_CHANNELS['workspace:clear'], (arg) => {
+    const store = deps.workspaceStore;
+    if (!store) throw new Error('工作区存储未初始化');
+    return store.clear(arg);
+  });
+
+  // ── 持久日志（自动保存方案；S4 起注入真实 PersistentLogService）──
+  handle(IPC_CHANNELS['logs:append'], (arg) => {
+    const svc = deps.logService;
+    if (!svc) throw new Error('持久日志服务未初始化');
+    return svc.append(arg);
+  });
+  handle(IPC_CHANNELS['logs:read'], (arg) => {
+    const svc = deps.logService;
+    if (!svc) throw new Error('持久日志服务未初始化');
+    return svc.read(arg ?? {});
+  });
+  handle(IPC_CHANNELS['logs:clear'], (arg) => {
+    const svc = deps.logService;
+    if (!svc) throw new Error('持久日志服务未初始化');
+    return svc.clear(arg);
   });
 }

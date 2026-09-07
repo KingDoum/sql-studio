@@ -521,3 +521,110 @@ export interface AiCompletionResponse {
  * - `titanium`：钛灰（苹果式克制中性灰，独立令牌，2026-09-01 外观升级新增）
  */
 export type ThemeMode = 'dark' | 'light' | 'titanium';
+
+// ─────────────────────────────────────────────────────────────
+// 工作区恢复快照（自动保存方案 §9.1）
+// ─────────────────────────────────────────────────────────────
+
+/** 工作区 schema 版本（与数据库 schema version 分开管理，方案 §11.10）。 */
+export const WORKSPACE_SCHEMA_VERSION = 1;
+
+/** 单标签恢复快照（规范化行，方案 §9.1）。 */
+export interface WorkspaceTabSnapshot {
+  id: string;
+  tabOrder: number;
+  title: string;
+  filePath: string | null;
+  sqlContent: string;
+  isDirty: boolean;
+  connectionId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 完整工作区快照（restore 提示与 save 请求共用，方案 §9.1）。 */
+export interface WorkspaceSnapshot {
+  workspaceId: 'default';
+  schemaVersion: number;
+  revision: number;
+  activeTabId: string | null;
+  currentConnectionId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  tabs: WorkspaceTabSnapshot[];
+}
+
+export interface WorkspaceLoadResult {
+  snapshot: WorkspaceSnapshot | null;
+  recoveredTabCount: number;
+  quarantinedTabCount: number;
+  warnings: string[];
+}
+
+export interface WorkspaceSaveRequest {
+  snapshot: WorkspaceSnapshot;
+}
+
+export interface WorkspaceSaveResult {
+  saved: boolean;
+  acceptedRevision: number;
+  storedRevision: number;
+  reason?: 'saved' | 'stale-revision' | 'capacity-exceeded';
+}
+
+export interface WorkspaceClearRequest {
+  workspaceId: 'default';
+  expectedRevision?: number;
+}
+
+export interface WorkspaceClearResult {
+  cleared: boolean;
+}
+
+// ─────────────────────────────────────────────────────────────
+// 持久日志（方案 §9.2）
+// ─────────────────────────────────────────────────────────────
+
+export type PersistentLogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+export interface PersistentLogEntryInput {
+  timestamp: string;
+  level: PersistentLogLevel;
+  source: 'main' | 'renderer';
+  event: string;
+  message: string;
+  context?: Record<string, unknown>;
+}
+
+export interface PersistentLogEntry extends PersistentLogEntryInput {
+  id: string;
+}
+
+export interface LogsAppendRequest {
+  entries: PersistentLogEntryInput[];
+  flush: boolean;
+}
+
+export interface LogsAppendResult {
+  accepted: number;
+  dropped: number;
+}
+
+export interface LogsReadRequest {
+  limit?: number;
+}
+
+export interface LogsReadResult {
+  entries: PersistentLogEntry[];
+  timezone: 'Asia/Shanghai';
+  truncated: boolean;
+}
+
+export interface LogsClearRequest {
+  scope: 'all-managed-logs';
+}
+
+export interface LogsClearResult {
+  cleared: boolean;
+  removedFileCount: number;
+}

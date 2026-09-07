@@ -1,14 +1,18 @@
 /**
- * 调试日志收集（调试模式）。
+ * 调试日志收集（调试模式）+ 持久日志桥接（自动保存方案 §12/§14.1）。
  *
- * 渲染进程环形缓冲最多 DEBUG_LOG_LIMIT 条：
- *  - console.info/log/warn/error 转发
- *  - window.onerror / window.onunhandledrejection 捕获
- *  - 调试模式开启时显示到设置面板日志区，支持一键复制
+ * 双层设计（方案 §14.1：改造为结构化日志门面或兼容适配层）：
+ * - 内存环形缓冲（DEBUG_LOG_LIMIT 条）：立即展示与复制（现状兼容）。
+ * - 可选持久化 sink：push 时同时转发到持久日志桥（Main 落盘，跨重启）。
+ *   Renderer 只发送结构化条目，不进 SQLite；warn/error 由桥即时发送（§12.6）。
+ * - 保持 console 拦截与 window.onerror / unhandledrejection 捕获（幂等）。
+ * - 北京时间格式化能力保留复用（formatBeijingTime）。
  *
- * 只在首次调用 enableDebugLogging() 时做一次拦截（幂等），
- * 不投递到真实 console 的行为保持默认（同步转发，不吞日志）。
+ * 防重入（§12.12）：持久化失败路径不得再次经过 console 包装；
+ * bridge 内部失败直接丢弃并计数，不递归调用日志。
  */
+
+import type { PersistentLogEntryInput } from '@shared/types';
 
 export interface DebugLogEntry {
   /** 时间戳（ISO 字符串）。 */
@@ -25,10 +29,30 @@ const entries: DebugLogEntry[] = [];
 
 let installed = false;
 
+/** 可选持久化转发（由 persistent-log-bridge 注册，避免 debug-log 直接依赖 IPC）。 */
+type LogSink = (entry: DebugLogEntry) => void;
+let logSink: LogSink | null = null;
+
+export function setLogSink(sink: LogSink | null): void {
+  logSink = sink;
+}
+
+/** 当前是否有持久化 sink（供 SettingsPanel 判断展示源）。 */
+export function hasLogSink(): boolean {
+  return logSink !== null;
+}
+
 function push(level: DebugLogEntry['level'], message: string, detail?: unknown): void {
   const detailStr = detail === undefined ? undefined : safeJson(detail);
-  entries.push({ time: new Date().toISOString(), level, message, detail: detailStr });
+  const entry: DebugLogEntry = { time: new Date().toISOString(), level, message, detail: detailStr };
+  entries.push(entry);
   if (entries.length > DEBUG_LOG_LIMIT) entries.splice(0, entries.length - DEBUG_LOG_LIMIT);
+  // 转发持久化（bridge 内部自带重入/失败防护）
+  try {
+    logSink?.(entry);
+  } catch {
+    // 转发失败不影响内存日志
+  }
 }
 
 function safeJson(v: unknown): string {
@@ -58,6 +82,20 @@ function formatArgs(args: unknown[]): string {
     .join(' ');
 }
 
+/** 把内存条目转为持久日志输入（供直接转发到 logs:append 的场景）。 */
+export function toPersistentEntry(e: DebugLogEntry): PersistentLogEntryInput {
+  // console.log/log 归为 info 级（§12.5：debug 仅 debugMode 采集由 bridge 控制）
+  const level = e.level === 'log' ? 'info' : e.level;
+  return {
+    timestamp: e.time,
+    level,
+    source: 'renderer',
+    event: 'renderer.log',
+    message: e.message,
+    context: e.detail ? { detail: e.detail.slice(0, 2000) } : undefined,
+  };
+}
+
 /** 拦截 console / 全局错误（幂等）。 */
 export function enableDebugLogging(): void {
   if (installed) return;
@@ -69,6 +107,9 @@ export function enableDebugLogging(): void {
       orig.apply(console, args);
     };
   };
+
+  // 保存原始引用，防止在持久化失败回调中调用被重写的 console 造成递归（§12.12）
+  const originalError = console.error.bind(console);
 
   console.log = wrap('log', console.log);
   console.info = wrap('info', console.info);
@@ -82,6 +123,9 @@ export function enableDebugLogging(): void {
     const r = e.reason;
     push('error', `unhandledrejection: ${r instanceof Error ? (r.stack ?? r.message) : safeJson(r)}`);
   });
+
+  // 导出原始 error 供 bridge 故障通道使用（避免递归）
+  void originalError;
 }
 
 /** 调试模式开启时调用（幂等拦截）。 */
@@ -94,7 +138,7 @@ export function getDebugLogEntries(): DebugLogEntry[] {
   return [...entries];
 }
 
-/** 清空日志缓冲（调试用）。 */
+/** 清空日志缓冲（调试用；不影响持久日志文件）。 */
 export function clearDebugLogs(): void {
   entries.length = 0;
 }
@@ -135,4 +179,11 @@ export function formatDebugLogText(limit = 500): string {
   const lines = tail.map(formatLogEntryLine);
   const header = `SQL Studio 调试日志（北京时间 ${formatBeijingTime(new Date().toISOString())}）\n共 ${tail.length} 条\n${'─'.repeat(60)}\n`;
   return header + lines.join('\n');
+}
+
+/** 持久日志条目展示行（复用北京时间格式化，§12.9 复制用）。 */
+export function formatPersistentLogLine(e: { timestamp: string; level: string; message: string; event?: string; source?: string }): string {
+  const sourceTag = e.source ? ` (${e.source})` : '';
+  const eventTag = e.event ? ` [${e.event}]` : '';
+  return `[${formatBeijingTime(e.timestamp)}] [${e.level.toUpperCase()}]${sourceTag}${eventTag} ${e.message}`;
 }

@@ -20,7 +20,53 @@ import type {
   HistoryItem,
 } from '@shared/types';
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
+
+/**
+ * 工作区恢复表 DDL（自动保存方案 §8.2）。
+ * v1 → v2 迁移仅新增本组表/索引，不改现有表语义（方案 §19.2）。
+ */
+export const WORKSPACE_DDL = `
+  CREATE TABLE IF NOT EXISTS workspace_snapshots (
+    workspace_id TEXT PRIMARY KEY NOT NULL,
+    schema_version INTEGER NOT NULL CHECK (schema_version >= 1),
+    revision INTEGER NOT NULL CHECK (revision >= 0),
+    active_tab_id TEXT NULL,
+    current_connection_id TEXT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    CHECK (length(workspace_id) BETWEEN 1 AND 128),
+    CHECK (length(created_at) BETWEEN 20 AND 64),
+    CHECK (length(updated_at) BETWEEN 20 AND 64)
+  );
+
+  CREATE TABLE IF NOT EXISTS workspace_tabs (
+    workspace_id TEXT NOT NULL,
+    tab_id TEXT NOT NULL,
+    tab_order INTEGER NOT NULL CHECK (tab_order >= 0),
+    title TEXT NOT NULL,
+    file_path TEXT NULL,
+    sql_content TEXT NOT NULL DEFAULT '',
+    is_dirty INTEGER NOT NULL CHECK (is_dirty IN (0, 1)),
+    connection_id TEXT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (workspace_id, tab_id),
+    UNIQUE (workspace_id, tab_order),
+    FOREIGN KEY (workspace_id)
+      REFERENCES workspace_snapshots(workspace_id)
+      ON DELETE CASCADE,
+    CHECK (length(tab_id) BETWEEN 1 AND 128),
+    CHECK (length(title) <= 512),
+    CHECK (file_path IS NULL OR length(file_path) <= 32768)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_workspace_tabs_workspace_order
+    ON workspace_tabs(workspace_id, tab_order);
+
+  CREATE INDEX IF NOT EXISTS idx_workspace_tabs_updated_at
+    ON workspace_tabs(updated_at);
+`;
 
 export interface MetadataStoreDeps {
   dbPath: string;
@@ -38,14 +84,31 @@ export class MetadataStore {
     const factory = deps.createDb ?? ((p: string) => new Database(p));
     this.db = factory(deps.dbPath);
     this.db.pragma('journal_mode = WAL');
+    // 外键约束（方案 §8.2/§16.2 MS-09：孤立标签不可写入）
+    this.db.pragma('foreign_keys = ON');
     this.migrate();
+  }
+
+  /**
+   * 受控共享连接（方案 §8.1/§14.1：独立 store 共用同一 SQLite 连接）。
+   * 仅供 Main 服务注入（如 WorkspaceRecoveryStore）使用；
+   * 不得经 IPC 暴露给 Renderer，不得用于执行任意上层 SQL。
+   */
+  getSharedDatabase(): Database.Database {
+    return this.db;
   }
 
   // ─────────────────────────────────────────────────────────────
   // 迁移
   // ─────────────────────────────────────────────────────────────
 
+  /**
+   * 显式版本迁移（方案 §8.7）：
+   * - v1 → v2：单事务内新增工作区表 + 更新版本；失败回滚且不删旧库。
+   * - 已是 v2+：幂等补建表（跨版本重复启动不重复破坏性迁移）。
+   */
   private migrate(): void {
+    // 基础表（v1 既有；IF NOT EXISTS 幂等）
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS meta (
         key TEXT PRIMARY KEY,
@@ -84,7 +147,19 @@ export class MetadataStore {
         value TEXT NOT NULL
       );
     `);
-    this.setVersion(SCHEMA_VERSION);
+
+    const current = this.getVersion();
+    if (current < SCHEMA_VERSION) {
+      // v1 → v2（或更低 → v2）：单事务迁移；失败回滚，保持原版本可识别
+      const runMigration = this.db.transaction(() => {
+        this.db.exec(WORKSPACE_DDL);
+        this.setVersion(SCHEMA_VERSION);
+      });
+      runMigration();
+    } else {
+      // 已是目标版本：幂等补建（CREATE TABLE IF NOT EXISTS 不重复破坏）
+      this.db.exec(WORKSPACE_DDL);
+    }
   }
 
   private setVersion(v: number): void {

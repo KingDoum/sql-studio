@@ -88,6 +88,16 @@ export const IPC_CHANNELS = {
   'dialog:showSaveDialog': 'dialog:showSaveDialog',
   'dialog:showOpenDialog': 'dialog:showOpenDialog',
   'shell:showItemInFolder': 'shell:showItemInFolder',
+
+  // 工作区恢复（自动保存方案）
+  'workspace:load': 'workspace:load',
+  'workspace:save': 'workspace:save',
+  'workspace:clear': 'workspace:clear',
+
+  // 持久日志（自动保存方案）
+  'logs:append': 'logs:append',
+  'logs:read': 'logs:read',
+  'logs:clear': 'logs:clear',
 } as const;
 
 export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
@@ -149,6 +159,14 @@ export interface IpcRequestMap {
 
   // 系统 Shell：在文件管理器中显示文件
   'shell:showItemInFolder': { path: string };
+
+  // 工作区恢复（自动保存方案 §9.3-9.5）
+  'workspace:load': { workspaceId: 'default' };
+  'workspace:save': import('./types').WorkspaceSaveRequest;
+  'workspace:clear': import('./types').WorkspaceClearRequest;
+  'logs:append': import('./types').LogsAppendRequest;
+  'logs:read': import('./types').LogsReadRequest;
+  'logs:clear': import('./types').LogsClearRequest;
 }
 
 export interface IpcResponseMap {
@@ -204,6 +222,14 @@ export interface IpcResponseMap {
 
   // 系统 Shell
   'shell:showItemInFolder': { shown: boolean };
+
+  // 工作区恢复（自动保存方案 §9.3-9.5）
+  'workspace:load': import('./types').WorkspaceLoadResult;
+  'workspace:save': import('./types').WorkspaceSaveResult;
+  'workspace:clear': import('./types').WorkspaceClearResult;
+  'logs:append': import('./types').LogsAppendResult;
+  'logs:read': import('./types').LogsReadResult;
+  'logs:clear': import('./types').LogsClearResult;
 }
 
 /** 便捷类型：某 channel 的请求参数类型。 */

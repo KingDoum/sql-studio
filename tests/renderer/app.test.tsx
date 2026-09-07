@@ -64,6 +64,24 @@ function mockFullSqlStudio(overrides: Record<string, unknown> = {}) {
     'dialog:showOpenDialog': vi.fn(async () => '/save/script.sql'),
     'connections:testById': vi.fn(async () => ({ ok: true, message: 'ok' })),
     'schema:ddl': vi.fn(async () => ({ ddl: 'CREATE TABLE users (id int)' })),
+    // 工作区恢复（S3/S5）
+    'workspace:load': vi.fn(async () => ({
+      snapshot: null,
+      recoveredTabCount: 0,
+      quarantinedTabCount: 0,
+      warnings: [],
+    })),
+    'workspace:save': vi.fn(async (arg: { snapshot: { revision: number } }) => ({
+      saved: true,
+      acceptedRevision: arg.snapshot.revision,
+      storedRevision: arg.snapshot.revision,
+      reason: 'saved' as const,
+    })),
+    'workspace:clear': vi.fn(async () => ({ cleared: true })),
+    // 持久日志（S4）
+    'logs:append': vi.fn(async () => ({ accepted: 0, dropped: 0 })),
+    'logs:read': vi.fn(async () => ({ entries: [], timezone: 'Asia/Shanghai', truncated: false })),
+    'logs:clear': vi.fn(async () => ({ cleared: true, removedFileCount: 0 })),
     ...overrides,
   };
   (window as unknown as { sqlStudio: unknown }).sqlStudio = sqlStudio;
@@ -135,6 +153,117 @@ describe('App 工作台冒烟', () => {
     await waitFor(() => expect(store['script:open']).toHaveBeenCalledWith({ filePath: '/save/script.sql' }));
     const stub = await screen.findByTestId('monaco-stub');
     expect((stub as HTMLTextAreaElement).value).toBe('SELECT 9;');
+  });
+});
+
+describe('App · 工作区恢复（S3/S5）', () => {
+  beforeEach(() => {
+    useWorkspace.setState({
+      currentConnectionId: null,
+      tabs: [],
+      activeTabId: null,
+      execution: null,
+      executionHistory: [],
+      executing: null,
+    });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+  });
+
+  function snapshotWith(partial: Record<string, unknown>) {
+    return {
+      workspaceId: 'default',
+      schemaVersion: 1,
+      revision: 3,
+      activeTabId: 't1',
+      currentConnectionId: 'c1',
+      createdAt: '2026-09-07T00:00:00.000Z',
+      updatedAt: '2026-09-07T00:00:00.000Z',
+      tabs: [
+        {
+          id: 't1',
+          tabOrder: 0,
+          title: '未命名-1',
+          filePath: null,
+          sqlContent: 'SELECT 恢复内容',
+          isDirty: true,
+          connectionId: null,
+          createdAt: '2026-09-07T00:00:00.000Z',
+          updatedAt: '2026-09-07T00:00:00.000Z',
+        },
+      ],
+      ...partial,
+    };
+  }
+
+  it('WS-02 正常重启恢复标签顺序、内容与活动项', async () => {
+    mockFullSqlStudio({
+      'workspace:load': vi.fn(async () => ({
+        snapshot: snapshotWith({}),
+        recoveredTabCount: 1,
+        quarantinedTabCount: 0,
+        warnings: [],
+      })),
+    });
+    render(<App />);
+    const stub = await screen.findByTestId('monaco-stub');
+    await waitFor(() => expect((stub as HTMLTextAreaElement).value).toBe('SELECT 恢复内容'));
+    // 未命名标签保持未命名且为脏
+    expect(screen.getByText(/未命名-1/)).toBeTruthy();
+    expect(document.querySelector('.tab-dirty')).toBeTruthy();
+  });
+
+  it('WS-19 恢复的连接已删除 → currentConnectionId 回退 null（文本仍恢复）', async () => {
+    mockFullSqlStudio({
+      // 连接列表只有 c2；快照 currentConnectionId=c1（已删除）
+      'connections:list': vi.fn(async () => [
+        { id: 'c2', name: '新连接', host: 'h', port: 3306, user: 'u', charset: 'utf8mb4', createdAt: 1, updatedAt: 1 },
+      ]),
+      'workspace:load': vi.fn(async () => ({
+        snapshot: snapshotWith({ currentConnectionId: 'c1' }),
+        recoveredTabCount: 1,
+        quarantinedTabCount: 0,
+        warnings: [],
+      })),
+    });
+    render(<App />);
+    // SQL 文本恢复不因连接失效受阻
+    const stub = await screen.findByTestId('monaco-stub');
+    await waitFor(() => expect((stub as HTMLTextAreaElement).value).toBe('SELECT 恢复内容'));
+    // 连接回退 null
+    await waitFor(() => expect(useWorkspace.getState().currentConnectionId).toBeNull());
+  });
+
+  it('WS-06 恢复失败（load reject）→ 启动空工作区不白屏', async () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockFullSqlStudio({
+      'workspace:load': vi.fn(async () => {
+        throw new Error('数据库损坏');
+      }),
+    });
+    render(<App />);
+    // 应用仍渲染完整外壳（不白屏）
+    expect(await screen.findByText('SQL Studio')).toBeTruthy();
+    expect(screen.getByText(/请选择一个连接/)).toBeTruthy();
+    expect(useWorkspace.getState().tabs).toHaveLength(0);
+    errSpy.mockRestore();
+  });
+
+  it('WS-12/13 自动保存不写真实文件：恢复后编辑触发 workspace:save 而非 script:save', async () => {
+    const store = mockFullSqlStudio({
+      'workspace:load': vi.fn(async () => ({
+        snapshot: snapshotWith({}),
+        recoveredTabCount: 1,
+        quarantinedTabCount: 0,
+        warnings: [],
+      })),
+    });
+    render(<App />);
+    // 恢复完成后编辑内容 → 500ms 防抖自动保存
+    const stub = await screen.findByTestId('monaco-stub');
+    fireEvent.change(stub, { target: { value: 'SELECT 编辑后内容;' } });
+    // 自动保存只走 workspace:save，绝不 script:save（§7.3/§16.6）
+    await waitFor(() => expect(store['workspace:save']).toHaveBeenCalled(), { timeout: 2000 });
+    expect(store['script:save']).not.toHaveBeenCalled();
   });
 });
 

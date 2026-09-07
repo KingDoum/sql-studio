@@ -7,6 +7,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
+import Database from 'better-sqlite3';
 import { MetadataStore } from '@main/services/metadata-store';
 import { Security } from '@main/services/security';
 import type { ConnectionInput } from '@shared/types';
@@ -131,8 +132,51 @@ describe('收藏（D1：已迁移至 favorites-store 文件库，此处仅断言
 });
 
 describe('迁移与 settings', () => {
-  it('初次创建后 schema_version = 1', () => {
-    expect(store.getVersion()).toBe(1);
+  it('初次创建后 schema_version = 2（自动保存方案 v2 迁移）', () => {
+    expect(store.getVersion()).toBe(2);
+  });
+
+  it('v1 旧库打开后升级到 v2：新增工作区表、旧数据不变、迁移幂等（MS-01）', () => {
+    // 手工构造 v1 库（仅 v1 表 + schema_version=1 + 一条连接）
+    const dbPath = path.join(tmpDir, 'v1-lib.db');
+    const raw = new Database(dbPath);
+    raw.exec(`
+      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      INSERT INTO meta (key, value) VALUES ('schema_version', '1');
+      CREATE TABLE connections (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, host TEXT NOT NULL, port INTEGER NOT NULL,
+        user TEXT NOT NULL, password TEXT NOT NULL, database TEXT,
+        charset TEXT NOT NULL DEFAULT 'utf8mb4', max_connections INTEGER,
+        idle_timeout_ms INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+      );
+      -- v1 时代密码即 b64: 前缀降级密文（与 Security 兼容）
+      INSERT INTO connections (id, name, host, port, user, password, database, charset, created_at, updated_at)
+      VALUES ('v1conn', '旧连接', '127.0.0.1', 3306, 'root', 'b64:' || '${Buffer.from('pw').toString('base64')}', 'db1', 'utf8mb4', 1, 1);
+      CREATE TABLE history (id TEXT PRIMARY KEY, connection_id TEXT, connection_name TEXT, sql TEXT NOT NULL,
+        success INTEGER NOT NULL DEFAULT 1, row_count INTEGER NOT NULL DEFAULT 0,
+        elapsed_ms INTEGER NOT NULL DEFAULT 0, executed_at INTEGER NOT NULL);
+      CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    `);
+    raw.close();
+
+    // 用 MetadataStore 打开：应执行 v1 → v2 迁移
+    const upgraded = new MetadataStore({ dbPath, security: mockSecurity });
+    expect(upgraded.getVersion()).toBe(2);
+    // 旧连接仍在（b64: 降级密文可被 Security 解密取回）
+    expect(upgraded.listConnections()).toHaveLength(1);
+    expect(upgraded.getConnectionConfig('v1conn')?.password).toBe('pw');
+    // 工作区表已建
+    const tables = upgraded.getSharedDatabase()
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('workspace_snapshots','workspace_tabs')")
+      .all() as { name: string }[];
+    expect(tables.map((t) => t.name).sort()).toEqual(['workspace_snapshots', 'workspace_tabs']);
+    upgraded.close();
+
+    // 再次打开：迁移幂等，不重复破坏
+    const reopened = new MetadataStore({ dbPath, security: mockSecurity });
+    expect(reopened.getVersion()).toBe(2);
+    expect(reopened.listConnections()).toHaveLength(1);
+    reopened.close();
   });
 
   it('settings 读写（V2 预留）', () => {

@@ -7,7 +7,7 @@
  *  - lastResult：最近一次查询结果（任务 10 渲染；此处先落位）。
  */
 import { create } from 'zustand';
-import type { EditorTab, QueryResult } from '@shared/types';
+import type { EditorTab, QueryResult, WorkspaceSnapshot } from '@shared/types';
 import { basename } from '@renderer/lib/sql-utils';
 
 let tabSeq = 0;
@@ -64,6 +64,8 @@ interface WorkspaceState {
   updateSql(id: string, sql: string): void;
   /** 保存成功后标记干净并记录路径。 */
   markSaved(id: string, filePath: string): void;
+  /** 启动恢复：用已验证快照一次性 hydrate（不恢复 execution/results/executing）。 */
+  hydrateFromSnapshot(snapshot: WorkspaceSnapshot): void;
   setExecution(rec: ExecutionRecord): void;
   /** 从结果历史中选择一条展示（不新增历史）。 */
   selectExecutionHistory(rec: ExecutionRecord): void;
@@ -84,7 +86,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   setConnection: (id) => set({ currentConnectionId: id }),
 
   newTab: () => {
-    const tab: EditorTab = { id: newTabId(), title: newTitle(), sql: '', isDirty: false };
+    // 方案 §7.4/§11.6：未命名标签默认 isDirty = true（可恢复草稿）
+    const tab: EditorTab = { id: newTabId(), title: newTitle(), sql: '', isDirty: true };
     set((s) => ({ tabs: [...s.tabs, tab], activeTabId: tab.id }));
     return tab.id;
   },
@@ -134,6 +137,32 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         t.id === id ? { ...t, filePath, title: basename(filePath), isDirty: false } : t,
       ),
     }));
+  },
+
+  /**
+   * 启动恢复：hydrate（自动保存方案 §11.2/§14.1）。
+   * 只恢复 tabs/activeTabId/currentConnectionId 与标签编辑字段；
+   * 绝不恢复 execution、result rows、executing（方案 §4.2/§7.2）。
+   */
+  hydrateFromSnapshot: (snapshot) => {
+    const tabs: EditorTab[] = snapshot.tabs.map((t) => ({
+      id: t.id,
+      title: t.title,
+      sql: t.sqlContent,
+      // filePath 保留供手动保存；自动保存不写真实文件（方案 §7.3）
+      filePath: t.filePath ?? undefined,
+      isDirty: t.isDirty,
+      connectionId: t.connectionId ?? undefined,
+    }));
+    set({
+      tabs,
+      activeTabId: snapshot.activeTabId,
+      currentConnectionId: snapshot.currentConnectionId,
+      // 显式清空执行态：恢复不携带任何执行信息
+      execution: null,
+      executionHistory: [],
+      executing: null,
+    });
   },
 
   setExecution: (rec) =>

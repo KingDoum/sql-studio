@@ -62,3 +62,37 @@ describe('Security - 降级分支（base64 混淆，标记非真加密）', () =
     expect(s.decrypt('plaintext-legacy')).toBe('plaintext-legacy');
   });
 });
+
+describe('Security - 历史密文跨环境兼容（b64 / hex / 明文）', () => {
+  /** 模拟 safeStorage：只接受 Buffer，收到字符串（历史上误传 b64 文本）会抛错。 */
+  const mockReal: EncryptFunctions = {
+    isAvailable: () => true,
+    encrypt: (p: string) => Buffer.from(p, 'utf-8'),
+    decrypt: (c: Buffer | string) => {
+      if (!Buffer.isBuffer(c)) throw new Error('safeStorage 只接受 Buffer');
+      return c.toString('utf-8');
+    },
+  };
+
+  it('b64: 降级密文在 safeStorage 可用环境下仍能正确解密（不自作主张交给当前加密器）', () => {
+    const s = new Security(mockReal);
+    const legacy = 'b64:' + Buffer.from('旧环境的密码', 'utf-8').toString('base64');
+    // 历史 bug：走 this.fn.decrypt(text) → safeStorage 收到字符串抛错，密码永久解不开
+    expect(s.decrypt(legacy)).toBe('旧环境的密码');
+  });
+
+  it('无前缀历史明文原样返回（不交给当前加密器）', () => {
+    const s = new Security(mockReal);
+    expect(s.decrypt('legacy-plain')).toBe('legacy-plain');
+  });
+
+  it('hex: 密文在 safeStorage 不可用时给出明确错误（而非 TypeError）', () => {
+    const s = new Security(); // 非 Electron 环境自动降级，isAvailable() === false
+    expect(() => s.decrypt('hex:00ff')).toThrow(/系统密钥/);
+  });
+
+  it('未知前缀仍抛「不支持」错误（不静默返回错误数据）', () => {
+    const s = new Security(mockReal);
+    expect(() => s.decrypt('aes:abcd')).toThrow(/不支持的密文格式/);
+  });
+});

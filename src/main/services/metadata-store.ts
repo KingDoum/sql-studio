@@ -183,14 +183,31 @@ export class MetadataStore {
   // 连接 CRUD
   // ─────────────────────────────────────────────────────────────
 
+  /**
+   * 行 → 主进程内部配置（含解密后的密码）。
+   *
+   * 单行解密失败（密文损坏 / 换机器后系统密钥不可用 / 历史降级密文）**不得向上抛**：
+   * 否则整个连接列表或后续查询会连锁失败。这里隔离为「空密码」，用户编辑该连接重输密码即可。
+   */
   private rowToConfig(row: any): ConnectionConfig {
+    let password = '';
+    if (typeof row.password === 'string' && row.password) {
+      try {
+        password = this.security.decrypt(row.password);
+      } catch (err) {
+        console.warn(
+          `[metadata] 连接 ${row.id} 密码解密失败，已按空密码处理（请编辑该连接重新输入密码）:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
     return {
       id: row.id,
       name: row.name,
       host: row.host,
       port: row.port,
       user: row.user,
-      password: this.security.decrypt(row.password),
+      password,
       database: row.database ?? undefined,
       charset: row.charset,
       maxConnections: row.max_connections ?? undefined,
@@ -200,17 +217,21 @@ export class MetadataStore {
     };
   }
 
-  private configToSummary(c: ConnectionConfig): ConnectionSummary {
+  /**
+   * 行 → 对外摘要（不含密码，**不解密**）。
+   * 列表/详情路径完全不接触密文，因此单条密文损坏不会让整个连接列表加载失败。
+   */
+  private rowToSummary(row: any): ConnectionSummary {
     return {
-      id: c.id,
-      name: c.name,
-      host: c.host,
-      port: c.port,
-      user: c.user,
-      database: c.database,
-      charset: c.charset,
-      createdAt: c.createdAt,
-      updatedAt: c.updatedAt,
+      id: row.id,
+      name: row.name,
+      host: row.host,
+      port: row.port,
+      user: row.user,
+      database: row.database ?? undefined,
+      charset: row.charset,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
     };
   }
 
@@ -252,7 +273,9 @@ export class MetadataStore {
         createdAt,
         updatedAt: now,
       });
-    return this.configToSummary(this.getConfigById(id)!);
+    // 返回摘要：直接按行映射，不经过解密（密文异常不应影响保存后的回显）
+    const saved = this.db.prepare('SELECT * FROM connections WHERE id = ?').get(id) as any;
+    return this.rowToSummary(saved);
   }
 
   private getConfigById(id: string): ConnectionConfig | null {
@@ -260,15 +283,15 @@ export class MetadataStore {
     return row ? this.rowToConfig(row) : null;
   }
 
-  /** 列出全部连接摘要（无密码）。 */
+  /** 列出全部连接摘要（无密码，不解密）。 */
   listConnections(): ConnectionSummary[] {
     const rows = this.db.prepare('SELECT * FROM connections ORDER BY updated_at DESC').all() as any[];
-    return rows.map((r) => this.configToSummary(this.rowToConfig(r)));
+    return rows.map((r) => this.rowToSummary(r));
   }
 
   getConnection(id: string): ConnectionSummary | null {
-    const c = this.getConfigById(id);
-    return c ? this.configToSummary(c) : null;
+    const row = this.db.prepare('SELECT * FROM connections WHERE id = ?').get(id) as any;
+    return row ? this.rowToSummary(row) : null;
   }
 
   /** 取主进程内部完整配置（含解密密码），仅限主进程使用。 */

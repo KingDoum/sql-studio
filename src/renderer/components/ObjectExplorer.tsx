@@ -37,7 +37,14 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable, onIn
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState('');
-  const requestIdRef = useRef(0);
+  /**
+   * 连接「代际」：每次重新加载库列表（切换连接 / 手动重试）时递增。
+   * 所有异步响应回来时必须校验代际是否仍是当前连接，避免旧连接的数据写进新连接的同名节点。
+   *
+   * 注意：**不要**用同一个自增计数器同时给 loadTables / loadColumns 编号 ——
+   * 它们加载的是不同节点，互相作废会导致「展开表后再展开库，字段响应被丢弃、节点永久空白」。
+   */
+  const epochRef = useRef(0);
   /** 是否已为当前关键词触发过全库表预载（避免重复请求）。 */
   const preloadedForRef = useRef('');
   /** 右键菜单状态。 */
@@ -45,20 +52,22 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable, onIn
 
   /** 加载数据库列表（可重试：初始加载与错误重试共用）。 */
   const loadDatabases = async () => {
-    const reqId = ++requestIdRef.current;
+    const epoch = ++epochRef.current;
+    // 连接切换 / 重载：重置预载去重标记，使新连接能重新触发跨库搜索预载
+    preloadedForRef.current = '';
     setLoading(true);
     setError(null);
     setExpandedDb(null);
     setExpandedTable(null);
     try {
       const names = await window.sqlStudio['schema:databases']({ connectionId });
-      if (reqId !== requestIdRef.current) return;
+      if (epoch !== epochRef.current) return;
       setDatabases(names.map((name) => ({ name })));
     } catch (err) {
-      if (reqId !== requestIdRef.current) return;
+      if (epoch !== epochRef.current) return;
       setError(err instanceof Error ? err.message : '加载库失败');
     } finally {
-      if (reqId === requestIdRef.current) setLoading(false);
+      if (epoch === epochRef.current) setLoading(false);
     }
   };
 
@@ -71,13 +80,15 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable, onIn
   const ensureTablesLoaded = async (db: string): Promise<boolean> => {
     const node = databases.find((d) => d.name === db);
     if (node?.tables) return true;
+    const epoch = epochRef.current;
     try {
       const tables = await window.sqlStudio['schema:tables']({ connectionId, database: db });
-      const reqId = requestIdRef.current;
+      // 代际校验：连接已切换则丢弃，否则旧连接的表会写进新连接的同名库节点
+      if (epoch !== epochRef.current) return false;
       setDatabases((dbs) => dbs.map((d) => (d.name === db ? { ...d, tables, loadError: undefined } : d)));
-      void reqId;
       return true;
     } catch {
+      if (epoch !== epochRef.current) return false;
       setDatabases((dbs) =>
         dbs.map((d) => (d.name === db ? { ...d, loadError: '加载表失败' } : d)),
       );
@@ -101,13 +112,14 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable, onIn
   }, [filter, databases.length, connectionId]);
 
   const loadTables = async (db: string) => {
-    const reqId = ++requestIdRef.current;
+    // 只读代际（不自增），因此不会作废其它节点的在途加载
+    const epoch = epochRef.current;
     try {
       const tables = await window.sqlStudio['schema:tables']({ connectionId, database: db });
-      if (reqId !== requestIdRef.current) return;
+      if (epoch !== epochRef.current) return;
       setDatabases((dbs) => dbs.map((d) => (d.name === db ? { ...d, tables, loadError: undefined } : d)));
     } catch (err) {
-      if (reqId !== requestIdRef.current) return;
+      if (epoch !== epochRef.current) return;
       // 子级加载失败只标记该库，不覆盖已加载的整棵树
       setDatabases((dbs) =>
         dbs.map((d) => (d.name === db ? { ...d, loadError: err instanceof Error ? err.message : `加载表失败：${db}` } : d)),
@@ -116,14 +128,14 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable, onIn
   };
 
   const loadColumns = async (db: string, table: string) => {
-    const reqId = ++requestIdRef.current;
+    const epoch = epochRef.current;
     try {
       const columns = await window.sqlStudio['schema:columns']({
         connectionId,
         database: db,
         table,
       });
-      if (reqId !== requestIdRef.current) return;
+      if (epoch !== epochRef.current) return;
       setDatabases((dbs) =>
         dbs.map((d) => {
           if (d.name !== db || !d.tables) return d;
@@ -134,7 +146,7 @@ export function ObjectExplorer({ connectionId, onPreviewTable, onOpenTable, onIn
         }),
       );
     } catch (err) {
-      if (reqId !== requestIdRef.current) return;
+      if (epoch !== epochRef.current) return;
       // 子级加载失败只标记该表，不覆盖整棵树
       setDatabases((dbs) =>
         dbs.map((d) => {

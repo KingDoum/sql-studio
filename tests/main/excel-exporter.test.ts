@@ -97,4 +97,26 @@ describe('ExcelExporter', () => {
     const ws = wb.worksheets[0];
     expect(ws.getCell('B2').value).toBe('');
   });
+
+  it('同名列各占一列且值不互相覆盖（JOIN 的 a.id / b.id 场景）', async () => {
+    const exporter = new ExcelExporter();
+    const dupColumns: ColumnMeta[] = [
+      { name: 'id', type: 'int', nullable: false, isPrimary: false, isUnique: false },
+      { name: 'name', type: 'varchar', nullable: true, isPrimary: false, isUnique: false },
+      { name: 'id', type: 'int', nullable: false, isPrimary: false, isUnique: false },
+    ];
+    await exporter.export({
+      options: { filePath: file, freezeHeader: false, includeMeta: false },
+      columns: dupColumns,
+      rows: [[1, '张三', 99]],
+    });
+    const wb = await readBack(file);
+    const ws = wb.worksheets[0];
+    expect(ws.getCell('A1').value).toBe('id');
+    expect(ws.getCell('C1').value).toBe('id');
+    // 关键：第三列必须是 99。历史 bug 用列名当 ExcelJS 列 key，
+    // 同名两列共享 key → 写入时后值覆盖前值，C2 会变成 1（第一列的值）。
+    expect(ws.getCell('A2').value).toBe(1);
+    expect(ws.getCell('C2').value).toBe(99);
+  });
 });

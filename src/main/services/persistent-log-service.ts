@@ -340,12 +340,16 @@ export class PersistentLogService {
   // flush / 清理
   // ─────────────────────────────────────────────────────────────
 
-  /** 退出前 flush；electron-log sync:true 已即时落盘，此处兜底刷新当前文件句柄。 */
+  /**
+   * 退出前 flush。
+   * electron-log v5 的 file transport 默认 `sync: true`（见其 defaults），每条写入即同步落盘、
+   * 不存在可丢失的内存缓冲，因此这里只需确认文件句柄可用（不抛错）即可，不做额外动作。
+   */
   flush(): void {
     try {
-      this.logger.transports.file.getFile().clear?.length; // touch（无副作用）
+      this.logger.transports.file.getFile();
     } catch {
-      // 忽略
+      // 忽略：退出路径不因日志失败而中断
     }
   }
 

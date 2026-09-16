@@ -3,7 +3,7 @@
  * 使用临时 sqlite 文件 + 注入 Security（mock 加密器），覆盖 CRUD、密文落库、
  * 迁移、边界（空/超长）。
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -57,6 +57,30 @@ describe('连接 CRUD', () => {
     const row = db.prepare('SELECT password FROM connections WHERE id = ?').get(saved.id) as any;
     expect(row.password).not.toBe('s3cret!@#');
     expect(row.password.startsWith('b64:')).toBe(true);
+  });
+
+  it('单条密文损坏不影响连接列表，且该连接隔离为空密码（不牵连其它连接）', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const a = store.saveConnection(sampleConn);
+      const b = store.saveConnection({ ...sampleConn, name: '第二个库' });
+      // 模拟密文损坏 / 未知格式（历史 bug：一条坏密文会让 listConnections 整体抛错）
+      const db = (store as any).db;
+      db.prepare('UPDATE connections SET password = ? WHERE id = ?').run('aes:broken', a.id);
+
+      // 1) 列表/摘要路径不解密 → 两条连接都正常返回
+      const list = store.listConnections();
+      expect(list).toHaveLength(2);
+      expect(list.map((c) => c.name).sort()).toEqual(['本地库', '第二个库'].sort());
+
+      // 2) 内部配置路径隔离为「空密码」，而不是把异常抛给上层
+      expect(store.getConnectionConfig(a.id)!.password).toBe('');
+
+      // 3) 其它连接不受影响
+      expect(store.getConnectionConfig(b.id)!.password).toBe('s3cret!@#');
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('list / get 不含密码', () => {

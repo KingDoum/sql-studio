@@ -91,7 +91,9 @@ export function ConnectionManager({ onSelect, selectedId, onConnectionsChange }:
     try {
       await window.sqlStudio['connections:remove']({ id });
       setMenuFor(null);
-      onSelect(null); // 清除选中状态
+      // 仅当删除的是「当前选中」连接时才清空选中与对象浏览器；
+      // 删除其它连接不应中断正在使用的会话（历史 bug：无条件 onSelect(null)）。
+      if (id === selectedId) onSelect(null);
       await refresh();
     } catch (err) {
       window.alert(`删除失败：${err instanceof Error ? err.message : String(err)}`);
@@ -134,6 +136,10 @@ export function ConnectionManager({ onSelect, selectedId, onConnectionsChange }:
       {(showForm || editing) && (
         <div className="conn-form-wrap">
           <ConnectionForm
+            // key 必须随编辑目标变化：ConnectionForm 用 useState(initial) 初始化，
+            // 无 key 时切换编辑对象会复用同一实例（state 不重置），
+            // 出现「显示 A 的值 + connectionId 已是 B」→ 保存时静默覆盖 B 的连接配置。
+            key={editing?.id ?? 'new'}
             connectionId={editing?.id}
             initial={editing ? {
               name: editing.name,

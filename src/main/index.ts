@@ -164,7 +164,21 @@ app.whenReady().then(() => {
   const excelExporter = new ExcelExporter();
   const sqlExporter = new SqlExporter();
   const csvExporter = new CsvExporter();
-  const aiService = new AiService();
+  // AI 服务日志接入持久日志（打包后主进程 console 不可见，日志会丢）：
+  // 只落非敏感摘要（URL 摘要/协议/长度/状态码/耗时），脱敏由 PersistentLogService 兜底。
+  const aiService = new AiService(globalThis.fetch, (message, context) => {
+    logService?.append({
+      entries: [{
+        timestamp: new Date().toISOString(),
+        level: 'info',
+        source: 'main',
+        event: 'ai.request',
+        message,
+        context,
+      }],
+      flush: false,
+    });
+  });
 
   // 2. 注册全部 IPC handler
   registerIpc(

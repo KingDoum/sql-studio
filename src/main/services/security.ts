@@ -84,14 +84,30 @@ export class Security {
     return `hex:${out.toString('hex')}`;
   }
 
-  /** 解密密文密码为明文。 */
+  /**
+   * 解密密文密码为明文。
+   *
+   * 三种历史格式必须各自独立解码，不能一律交给「当前加密器」：
+   * - `hex:`：safeStorage 二进制密文。仅当 safeStorage 可用时能解，否则给出明确错误
+   *   （换机器/换用户后系统密钥不可用属预期情形，应提示重新输入，而不是抛 TypeError）。
+   * - `b64:`：无 safeStorage 环境的降级密文（仅 base64 编码）。**必须走 fallbackDecrypt**，
+   *   否则在后来启用了 safeStorage 的机器上会把 base64 文本喂给 safeStorage.decryptString 而失败
+   *   （历史 bug：导致旧连接密码永久解不开）。
+   * - 无分隔符：极早期直接落库的明文，原样返回（兼容）。
+   */
   decrypt(cipher: string): string {
+    if (!cipher) return '';
     if (cipher.startsWith('hex:')) {
-      return this.fn.decrypt(Buffer.from(cipher.slice(4), 'hex'));
+      if (!this.fn.isAvailable()) {
+        throw new Error('无法解密：该密码由系统密钥加密，当前环境不可用，请重新输入密码');
+      }
+      return this.fn.decrypt(Buffer.from(cipher.slice('hex:'.length), 'hex'));
     }
-    if (cipher.startsWith(FALLBACK_PREFIX) || !cipher.includes(':')) {
-      // 降级密文（b64:）或兼容无前缀明文（历史数据）
-      return this.fn.decrypt(cipher);
+    if (cipher.startsWith(FALLBACK_PREFIX)) {
+      return fallbackDecrypt(cipher);
+    }
+    if (!cipher.includes(':')) {
+      return cipher;
     }
     // 其他前缀（如未来扩展的 aes:）暂不支持
     throw new Error(`不支持的密文格式: ${cipher.slice(0, 8)}...`);

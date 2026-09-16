@@ -54,6 +54,16 @@ export function TableFieldsPanel({
 
   const keyOf = (t: SqlTableRef) => `${t.db ?? ''}.${t.table}`;
 
+  /**
+   * 连接切换 → 清空字段缓存并作废在途请求。
+   * 缓存键只含 `db.table`（不含连接维度），不清空会把上一个连接的字段列表显示给新连接，
+   * 用户点击插入的列名可能在新连接并不存在。
+   */
+  useEffect(() => {
+    setCaches({});
+    requestSeq.current += 1;
+  }, [connectionId]);
+
   // 表列表变化 → 默认选中第一张（若当前选中已不在列表则重置）
   useEffect(() => {
     if (tables.length === 0) {
@@ -85,6 +95,14 @@ export function TableFieldsPanel({
     (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
   };
 
+  /**
+   * 过期响应处理：不写入内容，但把 loading 落下 ——
+   * 否则该项会永久停留在「加载字段…」，用户只能折叠再展开才能重试。
+   */
+  const settleStaleRequest = (key: string) => {
+    setCaches((c) => (c[key]?.loading ? { ...c, [key]: { ...c[key], loading: false } } : c));
+  };
+
   // 拉取选中表/全部表的字段（按需 + 缓存）
   const loadColumns = async (t: SqlTableRef) => {
     if (!connectionId) return;
@@ -104,10 +122,16 @@ export function TableFieldsPanel({
         database: db,
         table: t.table,
       });
-      if (seq !== requestSeq.current) return;
+      if (seq !== requestSeq.current) {
+        settleStaleRequest(key);
+        return;
+      }
       setCaches((c) => ({ ...c, [key]: { key, ref: t, columns, loading: false } }));
     } catch (err) {
-      if (seq !== requestSeq.current) return;
+      if (seq !== requestSeq.current) {
+        settleStaleRequest(key);
+        return;
+      }
       setCaches((c) => ({
         ...c,
         [key]: { key, ref: t, columns: [], loading: false, error: err instanceof Error ? err.message : '加载字段失败' },

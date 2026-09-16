@@ -19,12 +19,16 @@
 import type { AiConfig, AiCompletionRequest, AiCompletionResponse } from '@shared/types';
 import {
   clampMaxTokens,
+  normalizeAiRateLimitConfig,
   resolveCompletionsUrl,
   resolveProtocol,
 } from '@shared/ai-protocol';
 
-/** 超时毫秒。 */
-const REQUEST_TIMEOUT_MS = 15_000;
+/**
+ * 日志出口：由 Main 注入持久日志服务（打包后主进程 console 不可见，日志会丢失）；
+ * 未注入时（单测 / 纯 Node 环境）退化为 console。只传非敏感摘要。
+ */
+export type AiLogSink = (message: string, context?: Record<string, unknown>) => void;
 
 /** Chat 模式系统提示（FIM 模式不用，因为 FIM 不走 messages）。 */
 const SYSTEM_PROMPT = `You are a SQL completion assistant for MySQL/MariaDB.
@@ -35,7 +39,28 @@ The user's prefix ends at the cursor position. Complete it naturally.`;
 export class AiService {
   constructor(
     private readonly fetchFn: typeof globalThis.fetch = globalThis.fetch,
+    /** 可选日志出口：Main 注入持久日志服务（打包后 console 不可见）；缺省退化为 console。 */
+    private readonly logSink?: AiLogSink,
   ) {}
+
+  /**
+   * 统一日志出口（只输出非敏感摘要：URL 摘要 / 协议 / 长度 / 状态码 / 耗时）。
+   * 铁律：不输出 API Key、完整 prefix/suffix/SQL、Authorization header。
+   */
+  private log(message: string, context?: Record<string, unknown>): void {
+    if (this.logSink) {
+      this.logSink(message, context);
+      return;
+    }
+    // 无 sink：退化为 console（保持 key=value 文本格式，便于既有单测与本地排查）
+    const detail = context
+      ? ' ' +
+        Object.entries(context)
+          .map(([k, v]) => `${k}=${v !== null && typeof v === 'object' ? JSON.stringify(v) : String(v)}`)
+          .join(' ')
+      : '';
+    console.log(`[AI] ${message}${detail}`);
+  }
 
   /**
    * 调用 AI API 获取 SQL 补全建议。
@@ -51,9 +76,12 @@ export class AiService {
     const protocol = resolveProtocol(config.protocol, config.baseUrl);
     const url = resolveCompletionsUrl(config.baseUrl, protocol);
     const maxTokens = clampMaxTokens(req.maxTokens);
+    // 超时与 Renderer 的 requestTimeoutMs 同源（设置面板可调，共享归一化），
+    // 修复「两边各有一套超时」：设置 60s 时 Main 15s 先断、设置 3s 时 Main 的请求仍在跑。
+    const timeoutMs = normalizeAiRateLimitConfig(config.rateLimit).requestTimeoutMs;
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     const mergedSignal = signal
       ? combineSignals(signal, controller.signal)
       : controller.signal;
@@ -62,13 +90,14 @@ export class AiService {
       // 日志只输出非敏感诊断信息：URL（不含 query/密钥）、协议与请求规模摘要。
       // 不输出 SQL 前缀/正文/API Key（铁律：日志不得泄露完整敏感 SQL 与密钥）。
       const urlSummary = url.split('?')[0];
-      console.log(
-        '[AI] 请求:', urlSummary,
-        'protocol:', protocol,
-        'model:', config.model,
-        'prefixLen:', req.prefix.length,
-        'suffixLen:', (req.suffix ?? '').length,
-      );
+      this.log('请求', {
+        url: urlSummary,
+        protocol,
+        model: config.model,
+        prefixLen: req.prefix.length,
+        suffixLen: (req.suffix ?? '').length,
+        timeoutMs,
+      });
       const body = buildBody(req, config, protocol, maxTokens);
       const started = Date.now();
       const resp = await this.fetchFn(url, {
@@ -83,8 +112,8 @@ export class AiService {
       const elapsed = Date.now() - started;
 
       if (!resp.ok) {
-        // 非 2xx：记录状态码 + 安全原因（不输出响应体中的敏感内容）
-        console.log(`[AI] 响应失败: status=${resp.status} protocol=${protocol} elapsedMs=${elapsed}`);
+        // 非 2xx：只记录状态码与耗时（不输出响应体中的敏感内容）
+        this.log('响应失败', { status: resp.status, protocol, elapsedMs: elapsed });
         throw normalizeError(resp.status, await resp.text().catch(() => ''));
       }
 
@@ -111,15 +140,17 @@ export class AiService {
               }
             : undefined,
       };
-      console.log(
-        '[AI] 响应状态:', resp.status,
-        'protocol:', protocol,
-        'elapsedMs:', elapsed,
-        'suggestionLen:', suggestion.length,
-        'choiceCount:', meta.choiceCount,
-        'finishReason:', meta.finishReason ?? 'null',
-        'usage:', meta.usage ? `${meta.usage.promptTokens ?? '-'}/${meta.usage.completionTokens ?? '-'}/${meta.usage.totalTokens ?? '-'}` : 'n/a',
-      );
+      this.log('响应状态', {
+        status: resp.status,
+        protocol,
+        elapsedMs: elapsed,
+        suggestionLen: suggestion.length,
+        choiceCount: meta.choiceCount,
+        finishReason: meta.finishReason ?? 'null',
+        usage: meta.usage
+          ? `${meta.usage.promptTokens ?? '-'}/${meta.usage.completionTokens ?? '-'}/${meta.usage.totalTokens ?? '-'}`
+          : 'n/a',
+      });
       return { suggestion, meta };
     } finally {
       clearTimeout(timeout);

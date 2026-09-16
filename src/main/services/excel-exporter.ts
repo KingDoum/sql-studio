@@ -45,10 +45,12 @@ export class ExcelExporter {
     const sheetName = (options.sheetName ?? '查询结果').slice(0, 31);
     const ws = wb.addWorksheet(sheetName);
 
-    // 表头
-    const headers = columns.map((c) => ({
+    // 表头：ExcelJS 的列 key 必须唯一。结果集可能含同名列（如 JOIN 的 a.id / b.id），
+    // 若用列名当 key，同名两列共享一个 key，addRow 时后值覆盖前值（导出的两列变成同一份数据）。
+    // 因此 key 使用列下标，表头文本仍显示真实列名。CSV / SQL 导出按下标取值，不受影响。
+    const headers = columns.map((c, idx) => ({
       header: c.name,
-      key: c.name,
+      key: `col_${idx}`,
       width: Math.min(Math.max(c.name.length + 2, 10), 40),
     }));
     ws.columns = headers;
@@ -77,8 +79,9 @@ export class ExcelExporter {
       const batch = rows.slice(i, i + BATCH);
       for (const row of batch) {
         const obj: Record<string, ExcelJS.CellValue> = {};
-        columns.forEach((c, colIdx) => {
-          obj[c.name] = toExcelValue(row[colIdx]);
+        columns.forEach((_c, colIdx) => {
+          // 与 ws.columns 的 key 保持一致（列下标），保证同名列各占一列、值不互相覆盖
+          obj[`col_${colIdx}`] = toExcelValue(row[colIdx]);
         });
         ws.addRow(obj);
       }

@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Download } from 'lucide-react';
 import { useWorkspace } from '@renderer/store/workspace';
 import type { ExportExcelRequest, ExportInsertRequest, ExportCsvRequest, QueryResultSet } from '@shared/types';
+import { withTimestamp } from '@renderer/lib/file-name';
 import { Modal } from './Modal';
 
 const LAST_EXPORT_DIR_KEY = 'lastExportDir';
@@ -80,7 +81,7 @@ export function ExportMenu({ resultSet }: ExportMenuProps) {
     if (!activeSet) return;
     let filePath: string | null = null;
     try {
-      filePath = await pickSavePath('导出 Excel', '导出结果.xlsx', [
+      filePath = await pickSavePath('导出 Excel', withTimestamp('导出结果', 'xlsx'), [
         { name: 'Excel 文件', extensions: ['xlsx'] },
       ]);
     } catch {
@@ -108,7 +109,7 @@ export function ExportMenu({ resultSet }: ExportMenuProps) {
     if (!activeSet) return;
     let filePath: string | null = null;
     try {
-      filePath = await pickSavePath('导出 CSV', '导出结果.csv', [
+      filePath = await pickSavePath('导出 CSV', withTimestamp('导出结果', 'csv'), [
         { name: 'CSV 文件', extensions: ['csv'] },
       ]);
     } catch {
@@ -143,7 +144,7 @@ export function ExportMenu({ resultSet }: ExportMenuProps) {
     setExporting(true);
     setPendingInsert(false);
     try {
-      const filePath = await pickSavePath('导出 SQL INSERT', `${tableName.trim()}.sql`, [
+      const filePath = await pickSavePath('导出 SQL INSERT', withTimestamp(tableName.trim(), 'sql'), [
         { name: 'SQL 文件', extensions: ['sql'] },
       ]);
       if (!filePath) return; // 取消保存对话框：finally 统一复位

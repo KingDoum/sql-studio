@@ -72,4 +72,34 @@ describe('ExportMenu', () => {
     fireEvent.click(await screen.findByText('导出 Excel（全量）'));
     await waitFor(() => expect(store['export:excel']).toHaveBeenCalled());
   });
+
+  it('导出 Excel 的默认文件名为「导出结果_日期_时间」，用户可直接回车保存', async () => {
+    setResult();
+    const store = window.sqlStudio as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    render(<ExportMenu />);
+    fireEvent.click(screen.getByTitle('导出结果'));
+    fireEvent.click(await screen.findByText('导出 Excel（全量）'));
+    await waitFor(() => expect(store['dialog:showSaveDialog']).toHaveBeenCalled());
+    expect(store['dialog:showSaveDialog']).toHaveBeenCalledWith(
+      expect.objectContaining({
+        defaultPath: expect.stringMatching(/导出结果_\d{8}_\d{6}\.xlsx$/),
+      }),
+    );
+  });
+
+  it('导出 SQL INSERT 的默认文件名为「表名_日期_时间」（避免覆盖上次导出）', async () => {
+    setResult();
+    const store = window.sqlStudio as unknown as Record<string, ReturnType<typeof vi.fn>>;
+    render(<ExportMenu />);
+    fireEvent.click(screen.getByTitle('导出结果'));
+    fireEvent.click(await screen.findByText('导出 SQL INSERT'));
+    fireEvent.change(await screen.findByPlaceholderText('如 orders'), { target: { value: 'orders' } });
+    fireEvent.click(screen.getByText('下一步'));
+    await waitFor(() => expect(store['dialog:showSaveDialog']).toHaveBeenCalled());
+    expect(store['dialog:showSaveDialog']).toHaveBeenCalledWith(
+      expect.objectContaining({
+        defaultPath: expect.stringMatching(/orders_\d{8}_\d{6}\.sql$/),
+      }),
+    );
+  });
 });

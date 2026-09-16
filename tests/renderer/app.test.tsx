@@ -144,6 +144,12 @@ describe('App 工作台冒烟', () => {
         expect.objectContaining({ filePath: '/save/script.sql', content: 'SELECT 42;' }),
       ),
     );
+    // 另存为的默认文件名带日期时间（未命名_YYYYMMDD_HHmmss.sql），不改名可直接回车保存
+    expect(store['dialog:showSaveDialog']).toHaveBeenCalledWith(
+      expect.objectContaining({
+        defaultPath: expect.stringMatching(/未命名_\d{8}_\d{6}\.sql$/),
+      }),
+    );
   });
 
   it('打开脚本（prompt 路径）→ 标签出现', async () => {

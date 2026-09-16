@@ -35,6 +35,7 @@ import { Modal } from '@renderer/components/Modal';
 import { useWorkspace, useActiveTab } from '@renderer/store/workspace';
 import { buildSelectSql, splitStatements } from '@renderer/lib/sql-utils';
 import { hasWriteStatements } from '@renderer/lib/cell-format';
+import { withTimestamp } from '@renderer/lib/file-name';
 
 /** 连接状态 → 图标（顶部应用栏，图标+颜色+文字组合）。 */
 const CONN_STATUS_META: Record<string, { icon: typeof Circle; text: string }> = {
@@ -305,12 +306,14 @@ function App() {
   const handleSaveAs = async () => {
     if (!activeTab) return;
     let filePath: string | null = null;
+    // 默认名带日期时间（未命名_20260916_173045.sql），用户不想起名时可直接回车保存
+    const defaultName = withTimestamp('未命名', 'sql');
     try {
       filePath = await window.sqlStudio['dialog:showSaveDialog']({
         title: '保存 SQL 脚本',
         defaultPath: lastScriptDirRef.current
-          ? `${lastScriptDirRef.current.replace(/[\\/]$/, '')}/未命名.sql`
-          : '未命名.sql',
+          ? `${lastScriptDirRef.current.replace(/[\\/]$/, '')}/${defaultName}`
+          : defaultName,
         filters: [{ name: 'SQL 文件', extensions: ['sql'] }],
       });
     } catch (err) {

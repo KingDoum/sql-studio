@@ -27,9 +27,13 @@ export function defaultBaseUrlFor(protocol: AiProtocol): string {
   return protocol === 'deepseek-fim' ? 'https://api.deepseek.com/beta' : 'https://api.deepseek.com';
 }
 
-/** 该协议默认模型（协议切换时的提示/默认值；用户可改）。 */
+/**
+ * 该协议默认模型（协议切换时的提示/默认值；用户可改）。
+ * FIM 默认 `deepseek-flash`：DeepSeek 官方 FIM 补全（Beta）文档给出的模型名。
+ * 历史默认值 `deepseek-v4-pro` 并不存在，首次使用会 404。
+ */
 export function defaultModelFor(protocol: AiProtocol): string {
-  return protocol === 'deepseek-fim' ? 'deepseek-v4-pro' : 'deepseek-chat';
+  return protocol === 'deepseek-fim' ? 'deepseek-flash' : 'deepseek-chat';
 }
 
 /**

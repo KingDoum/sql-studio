@@ -14,7 +14,7 @@
  *   ├──────────────┤   ← toast 覆盖层
  *   └──────────────┘   ← 状态栏（行数/排序提示）
  */
-import { useMemo, useRef, useState, useCallback } from 'react';
+import { useMemo, useRef, useState, useCallback, useEffect } from 'react';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import type { CellValue, ColumnMeta } from '@shared/types';
 import { compareCell, formatCell, matchesFilter } from '@renderer/lib/cell-format';
@@ -38,6 +38,8 @@ export function ResultGrid({ columns, rows, showFilter = true }: ResultGridProps
   const [sortCol, setSortCol] = useState<number | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>('none');
   const [filters, setFilters] = useState<Record<number, string>>({});
+  /** 防抖后的筛选词（输入停止 250ms 才应用）：避免 5 万行逐键全量过滤。 */
+  const [debouncedFilters, setDebouncedFilters] = useState<Record<number, string>>({});
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportH, setViewportH] = useState(200);
   const [toast, setToast] = useState<string | null>(null);
@@ -60,10 +62,17 @@ export function ResultGrid({ columns, rows, showFilter = true }: ResultGridProps
     [columns, colWidths],
   );
 
+  // 筛选词防抖：输入停止 250ms 后才应用到行过滤。
+  // 大结果集（上限 5 万行）的 filter + formatCell 开销不应每次击键都付一遍。
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedFilters(filters), 250);
+    return () => clearTimeout(t);
+  }, [filters]);
+
   // 排序 + 筛选（内存完成）
   const visibleRows = useMemo(() => {
     let out = rows;
-    const activeFilters = Object.entries(filters).filter(([, kw]) => kw.trim() !== '');
+    const activeFilters = Object.entries(debouncedFilters).filter(([, kw]) => kw.trim() !== '');
     if (activeFilters.length) {
       out = out.filter((row) =>
         activeFilters.every(([ci, kw]) => matchesFilter(row[Number(ci)], kw)),
@@ -76,7 +85,7 @@ export function ResultGrid({ columns, rows, showFilter = true }: ResultGridProps
       });
     }
     return out;
-  }, [rows, filters, sortCol, sortDir]);
+  }, [rows, debouncedFilters, sortCol, sortDir]);
 
   // 可视区间
   const { start, end } = useMemo(() => {
@@ -165,7 +174,8 @@ export function ResultGrid({ columns, rows, showFilter = true }: ResultGridProps
           <div className="grid-header" style={{ gridTemplateColumns: gridTemplate }}>
             {columns.map((c, ci) => (
               <div
-                key={c.name}
+                // key 用列下标：结果集可能含同名列（JOIN），用列名会重复 key
+                key={`h-${ci}`}
                 className={`grid-header-cell${sortCol === ci && sortDir !== 'none' ? ' sorting' : ''}`}
                 onClick={() => handleSortClick(ci)}
                 title={c.comment || c.type}
@@ -193,7 +203,7 @@ export function ResultGrid({ columns, rows, showFilter = true }: ResultGridProps
             <div className="grid-filter" style={{ gridTemplateColumns: gridTemplate }}>
               {columns.map((c, ci) => (
                 <input
-                  key={`f-${c.name}`}
+                  key={`f-${ci}`}
                   className="grid-filter-input"
                   placeholder="筛选…"
                   aria-label={`筛选 ${c.name}`}

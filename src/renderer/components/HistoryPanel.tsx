@@ -97,7 +97,10 @@ export function HistoryPanel({ open, onClose, onBackfillSql, onSaveAsFavorite }:
                   try {
                     await window.sqlStudio['history:remove']({ id: h.id });
                     setItems((prev) => prev.filter((x) => x.id !== h.id));
-                  } catch { /* 静默 */ }
+                  } catch (err) {
+                    // 不再静默：删除失败必须让用户知道
+                    window.alert(`删除失败：${err instanceof Error ? err.message : String(err)}`);
+                  }
                 }}
               >
                 <Trash2 size={13} /> 删除

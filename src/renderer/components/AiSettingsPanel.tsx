@@ -96,11 +96,14 @@ export function AiSettingsPanel({ open, onClose, onSettingsChanged }: AiSettings
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  /** 配置加载失败：禁止保存，避免用表单里的默认值覆盖真实配置（例如把已启用的 AI 关掉）。 */
+  const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setLoading(true);
     setMsg(null);
+    setLoadFailed(false);
     setApiKeyInput('');
     window.sqlStudio['settings:getAiConfig']()
       .then((pub: AiPublicConfig | null) => {
@@ -119,7 +122,10 @@ export function AiSettingsPanel({ open, onClose, onSettingsChanged }: AiSettings
           setRateLimitInputs(toInputs(DEFAULT_AI_RATE_LIMIT_CONFIG));
         }
       })
-      .catch(() => setMsg('加载设置失败'))
+      .catch(() => {
+        setMsg('加载设置失败：为避免用默认值覆盖现有配置，已禁用保存，请关闭后重试');
+        setLoadFailed(true);
+      })
       .finally(() => setLoading(false));
   }, [open]);
 
@@ -161,7 +167,8 @@ export function AiSettingsPanel({ open, onClose, onSettingsChanged }: AiSettings
   };
 
   const handleSave = async () => {
-    if (hasRateLimitError) return; // 非法值不能保存
+    // 非法值 / 仍在加载 / 加载失败：一律不保存（避免默认值覆盖真实配置）
+    if (hasRateLimitError || loading || loadFailed) return;
     setSaving(true);
     setMsg(null);
     try {
@@ -196,7 +203,7 @@ export function AiSettingsPanel({ open, onClose, onSettingsChanged }: AiSettings
         <button
           className="ai-settings-btn primary"
           onClick={() => void handleSave()}
-          disabled={saving || hasRateLimitError}
+          disabled={saving || loading || loadFailed || hasRateLimitError}
           title={hasRateLimitError ? '请先修正请求策略中的非法值' : undefined}
         >
           {saving ? '保存中…' : '保存设置'}

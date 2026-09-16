@@ -4,7 +4,7 @@
  * 覆盖：空结果、排序、筛选、虚拟滚动数量、复制、NULL 展示。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ResultGrid } from '@renderer/components/ResultGrid';
 import type { CellValue, ColumnMeta } from '@shared/types';
 
@@ -130,12 +130,15 @@ describe('ResultGrid', () => {
     fireEvent.click(idHeader); // 切到 none
   });
 
-  it('筛选列', () => {
+  it('筛选列（输入停止 250ms 防抖后生效）', async () => {
     renderGrid();
     const inputs = screen.getAllByPlaceholderText('筛选…');
     fireEvent.change(inputs[1], { target: { value: 'Bob' } });
-    expect(screen.getByText('Bob')).toBeTruthy();
-    expect(screen.queryByText('Alice')).toBeNull();
+    // 防抖：避免大结果集（上限 5 万行）每次击键都做一次全量过滤
+    await waitFor(() => {
+      expect(screen.getByText('Bob')).toBeTruthy();
+      expect(screen.queryByText('Alice')).toBeNull();
+    });
   });
 
   it('双击单元格复制', async () => {

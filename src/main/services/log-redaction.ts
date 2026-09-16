@@ -112,7 +112,9 @@ export function shortHash(value: string): string {
     h ^= value.charCodeAt(i);
     h = Math.imul(h, 0x01000193) >>> 0;
   }
-  return `sha256:${h.toString(16).padStart(8, '0')}`;
+  // 前缀必须与实际算法一致：FNV-1a 32 位（非加密哈希）。
+  // 历史上写成 `sha256:` 具有误导性（会让人以为这是 sha256 摘要）。
+  return `fnv1a:${h.toString(16).padStart(8, '0')}`;
 }
 
 /** 循环引用安全的 JSON 序列化（§12.11）；失败回退 String()。 */

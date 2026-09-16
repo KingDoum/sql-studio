@@ -164,8 +164,8 @@ export class PersistentLogService {
 
     let batchBytes = 0;
     const toWrite: PersistentLogEntryInput[] = [];
-    for (const e of acceptedInputs) {
-      const sanitized = this.sanitizeEntry(e);
+    for (let i = 0; i < acceptedInputs.length; i++) {
+      const sanitized = this.sanitizeEntry(acceptedInputs[i]);
       const lineBytes = Buffer.byteLength(JSON.stringify(sanitized), 'utf8');
       if (lineBytes > APPEND_ENTRY_BYTES_LIMIT) {
         // 单条超限：截断 context 保留摘要（§10.6）
@@ -178,7 +178,9 @@ export class PersistentLogService {
         continue;
       }
       if (batchBytes + lineBytes > APPEND_BATCH_BYTES_LIMIT) {
-        dropped += entries.length - toWrite.length - dropped > 0 ? 1 : 0;
+        // 批次字节超限：当前条及之后的条目都不会写入，全部计入 dropped
+        // （历史实现的计数表达式口径混乱，会明显少计）
+        dropped += acceptedInputs.length - i;
         break;
       }
       batchBytes += lineBytes;
@@ -234,12 +236,14 @@ export class PersistentLogService {
 
   read(req: LogsReadRequest = {}): LogsReadResult {
     const limit = this.clampLimit(req?.limit);
-    const files = this.listLogFiles(); // 受控目录内全部 .log（活动 + 归档）
-    const entries: Array<{ timestamp: number; entry: PersistentLogEntry }> = [];
+    // 按 mtime 倒序：最新写入的文件优先，凑够 limit 条即可停止 ——
+    // 避免为了 500 条而把整个目录（上限 60 MB）的所有行都 JSON.parse 一遍。
+    const files = this.listLogFiles().sort((a, b) => this.mtimeMs(b) - this.mtimeMs(a));
+    const picked: Array<{ timestamp: number; entry: PersistentLogEntry }> = [];
     let badLines = 0;
 
     for (const filePath of files) {
-      if (entries.length >= limit) break;
+      if (picked.length >= limit) break;
       let text = '';
       try {
         text = fs.readFileSync(filePath, 'utf8');
@@ -247,7 +251,10 @@ export class PersistentLogService {
         continue; // 读失败跳过该文件，不使整个请求失败
       }
       const lines = text.split(/\r?\n/);
-      for (const line of lines) {
+      // 从文件尾部往前解析：只要最新的若干条
+      for (let i = lines.length - 1; i >= 0; i--) {
+        if (picked.length >= limit) break;
+        const line = lines[i];
         if (!line.trim()) continue;
         try {
           const parsed = JSON.parse(line) as Partial<PersistentLogEntry> & { timestamp?: string };
@@ -260,7 +267,7 @@ export class PersistentLogService {
             badLines += 1;
             continue;
           }
-          entries.push({
+          picked.push({
             timestamp: ts,
             entry: {
               id: this.entryId(parsed),
@@ -278,14 +285,24 @@ export class PersistentLogService {
       }
     }
 
-    // 按时间升序返回（最新在尾部；超出 limit 时保留最新 limit 条）
-    entries.sort((a, b) => a.timestamp - b.timestamp);
-    const tail = entries.slice(-limit).map((x) => x.entry);
+    // 跨文件可能有时间重叠：统一按时间升序后取最新的 limit 条（最新在尾部）
+    picked.sort((a, b) => a.timestamp - b.timestamp);
+    const entries = picked.slice(-limit).map((x) => x.entry);
     return {
-      entries: tail,
+      entries,
       timezone: 'Asia/Shanghai',
-      truncated: entries.length > limit || badLines > 0,
+      // 达到 limit（可能还有更早的记录未读）或存在坏行时标记为截断
+      truncated: picked.length >= limit || badLines > 0,
     };
+  }
+
+  /** 文件 mtime（毫秒）；取不到返回 0（排在最后）。 */
+  private mtimeMs(p: string): number {
+    try {
+      return fs.statSync(p).mtimeMs;
+    } catch {
+      return 0;
+    }
   }
 
   private clampLimit(limit: number | undefined): number {

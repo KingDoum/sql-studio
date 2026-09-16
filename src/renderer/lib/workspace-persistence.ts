@@ -133,6 +133,10 @@ export class WorkspacePersistenceCoordinator {
   private async drain(): Promise<void> {
     if (this.running || this.stopped) return;
     this.running = true;
+    // 每次新的 drain 都重置重试预算：历史实现只在保存成功后归零，
+    // 一旦某轮连续失败达到上限，后续事件（用户继续编辑/结构变化）就只会尝试 1 次便放弃，
+    // 自动保存会长期停在「每次只试一次」的降级状态。
+    this.retryAttempt = 0;
     this.setState('saving');
     let retryExhausted = false;
     try {

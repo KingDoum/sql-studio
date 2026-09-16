@@ -189,31 +189,42 @@ function normalizeType(raw: string): ColumnMeta['type'] {
   return raw;
 }
 
-/** 把一行记录转为 CellValue[][]（NULL→null，Buffer→Uint8Array，Date→本地可读，其余保持）。 */
-function rowsToCells(rows: Record<string, unknown>[]): CellValue[][] {
+/**
+ * 把一行记录转为 CellValue[][]（NULL→null，Buffer→Uint8Array，Date→本地可读，其余保持）。
+ * 传入 columns 以便按「列类型」决定日期格式（DATE 只显示日期、DATETIME 保留时间）。
+ */
+function rowsToCells(rows: Record<string, unknown>[], columns: ColumnMeta[] = []): CellValue[][] {
   return rows.map((row) => {
-    return Object.keys(row).map((k) => {
+    return Object.keys(row).map((k, ci) => {
       const v = row[k];
       if (v === null || v === undefined) return null;
-      if (v instanceof Date) return formatDateLocal(v);
-      if (typeof v === 'object' && v instanceof Uint8Array) return v;
-      if (typeof v === 'object' && typeof (v as { length?: number }).length === 'number' && (v as { constructor?: { name?: string } }).constructor?.name === 'Buffer') {
-        return new Uint8Array((v as Uint8Array).buffer ?? (v as unknown as Uint8Array));
-      }
+      if (v instanceof Date) return formatDateLocal(v, columns[ci]?.type);
+      // Buffer 是 Uint8Array 的子类，统一在这一条路径处理（历史实现的 Buffer 分支不可达）。
+      // 复制为等长副本：不能返回 v.buffer —— 那会丢掉 byteOffset/byteLength，
+      // Buffer 切片会读到整个底层内存池的数据。
+      if (v instanceof Uint8Array) return new Uint8Array(v);
       if (typeof v === 'object') return JSON.stringify(v);
       return v as CellValue;
     });
   });
 }
 
-/** Date → 本地可读字符串（YYYY-MM-DD HH:mm:ss；DATE 类仅显示日期部分）。 */
-export function formatDateLocal(d: Date): string {
+/**
+ * Date → 本地可读字符串（YYYY-MM-DD HH:mm:ss；DATE 类型仅显示日期部分）。
+ *
+ * 是否省略时间**按列类型判断**：mysql2 把 DATE 与 DATETIME 都转成 Date，
+ * 无法从值本身区分列类型。历史实现用「时分秒是否为 0」推断，
+ * 会把真实的 00:00:00 误显示成纯日期（丢时间信息）。
+ * `columnType` 缺省时保留旧启发式，兼容未传列类型的调用点。
+ */
+export function formatDateLocal(d: Date, columnType?: string): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   const datePart = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  // 无时间部分（时分秒均为 0 且原值只含日期）→ 只显示日期
-  if (d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0 && d.getMilliseconds() === 0) {
-    return datePart;
-  }
+  const dateOnly =
+    columnType === 'date' ||
+    (columnType === undefined &&
+      d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0 && d.getMilliseconds() === 0);
+  if (dateOnly) return datePart;
   return `${datePart} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
@@ -245,7 +256,7 @@ export class QueryService {
     const statements = splitStatements(sql);
     const resultSets: QueryResultSet[] = rawSets.map((set, idx) => {
       const columns = extractColumns(set.fields);
-      const allRows = rowsToCells(set.rows);
+      const allRows = rowsToCells(set.rows, columns);
       const truncated = allRows.length > this.maxRows;
       const rows = truncated ? allRows.slice(0, this.maxRows) : allRows;
       const stmtText = statements[idx] ?? (idx === 0 ? sql.trim() : '');

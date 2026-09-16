@@ -11,7 +11,7 @@
  *  - 筛选入口在工具栏（开关筛选行），表头/筛选/表体仍共用同一列宽源（ResultGrid 内部）。
  *  - 空结果、加载、错误、截断和成功状态分别设计。
  */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Filter, FilterX, AlertTriangle, Clock } from 'lucide-react';
 import { useWorkspace } from '@renderer/store/workspace';
 import { ResultGrid } from './ResultGrid';
@@ -27,9 +27,17 @@ export function ResultTabs() {
   const [activeSet, setActiveSet] = useState(0);
   /** 筛选行开关（默认展开）。 */
   const [showFilter, setShowFilter] = useState(true);
-  /** 结果区高度（null = 使用默认 CSS 高度）。 */
+  /** 结果区高度（null = 使用默认 CSS 高度）；拖拽结果持久化到 settings。 */
   const [panelHeight, setPanelHeight] = useState<number | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
+
+  // 启动时恢复上次拖拽的高度（无记录 / 低于下限则用默认 CSS 高度）
+  useEffect(() => {
+    void window.sqlStudio['settings:get']({ key: 'resultPanelHeight' }).then((v) => {
+      const n = v ? Number.parseInt(v, 10) : Number.NaN;
+      if (Number.isFinite(n) && n >= MIN_PANEL_H) setPanelHeight(n);
+    });
+  }, []);
   const dragRef = useRef<{ startY: number; startH: number } | null>(null);
 
   // 结果集数变化时钳制 activeSet，避免指向不存在的结果集（多结果集→单结果集回归）
@@ -56,6 +64,9 @@ export function ResultTabs() {
   const onResizeEnd = (e: React.PointerEvent) => {
     dragRef.current = null;
     (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+    // 拖拽结束才写设置（避免拖动过程高频 IPC）；用实测高度更可靠
+    const h = panelRef.current?.offsetHeight;
+    if (h) void window.sqlStudio['settings:set']({ key: 'resultPanelHeight', value: String(h) });
   };
 
   /** 历史 SQL 摘要（首行非空、去注释）。 */
@@ -153,6 +164,9 @@ export function ResultTabs() {
           </div>
           <div className="result-grid-host">
             <ResultGrid
+              // key 随「执行结果 + 结果集」变化：切换结果集或查看历史结果时重置内部的排序、筛选与列宽。
+              // （ResultGrid 的排序列/筛选词按下标存储，不重置会把上一个结果集的状态套到新结果集）
+              key={`${execution.executedAt}-${safeSet}`}
               columns={execution.result.resultSets[safeSet]?.columns ?? []}
               rows={execution.result.resultSets[safeSet]?.rows ?? []}
               showFilter={showFilter}

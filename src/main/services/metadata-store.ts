@@ -432,8 +432,8 @@ export class MetadataStore {
     const newKey = typeof config.apiKey === 'string' ? config.apiKey.trim() : '';
     let apiKeyToStore = '';
     if (newKey) {
-      const encrypted = this.security.encrypt(newKey);
-      apiKeyToStore = Buffer.isBuffer(encrypted) ? encrypted.toString('base64') : String(encrypted);
+      // Security.encrypt 只返回字符串（`hex:...` 或 `b64:...`），直接落库即可
+      apiKeyToStore = this.security.encrypt(newKey);
     } else {
       // 空 Key：保留旧密文（原样复用，不再二次加密；不覆盖、不删除）
       const raw = this.getSetting(this.AI_CONFIG_KEY);

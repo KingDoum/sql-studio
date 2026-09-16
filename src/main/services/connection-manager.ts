@@ -322,11 +322,9 @@ function normalizeExecuteResult(res: [unknown, unknown]): RawResultSet[] {
   if (Array.isArray(first) && first.length > 0 && (Array.isArray(first[0]) || isHeaderLike(first[0]))) {
     const rowsList = first as unknown[];
     const fieldsList = (Array.isArray(second) ? second : []) as unknown[];
-    return rowsList.map((item, i) =>
-      Array.isArray(item)
-        ? normalizeRawSet(item as QueryRow[], fieldsList[i])
-        : normalizeRawSet(item as QueryRow[], fieldsList[i]),
-    );
+    // 每个元素独立归一化：SELECT 元素为 rows 数组，写类元素为 ResultSetHeader，
+    // 二者都交给 normalizeRawSet 统一处理（它按是否为数组判断 affectedRows/isWrite）
+    return rowsList.map((item, i) => normalizeRawSet(item as QueryRow[], fieldsList[i]));
   }
   // 单语句：first 为 rows 数组或 header 对象
   return [normalizeRawSet(first as QueryRow[], second)];

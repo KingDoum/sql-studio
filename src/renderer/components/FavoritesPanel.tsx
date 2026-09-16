@@ -104,8 +104,14 @@ export function FavoritesPanel({ open, onClose, onOpen }: FavoritesPanelProps) {
                     aria-label="重命名收藏"
                     onChange={(e) => setRenameValue(e.target.value)}
                     onKeyDown={(e) => {
+                      // Escape 只取消本次重命名，必须阻止冒泡：
+                      // Modal 在 window 上监听 Escape 关闭弹窗，不拦住会连带把整个「命名收藏」关掉
+                      if (e.key === 'Escape') {
+                        e.stopPropagation();
+                        setRenaming(null);
+                        return;
+                      }
                       if (e.key === 'Enter') void confirmRename(fav.name);
-                      if (e.key === 'Escape') setRenaming(null);
                     }}
                   />
                   <button className="rename-btn ok" title="确认" onClick={() => void confirmRename(fav.name)}>
@@ -138,7 +144,10 @@ export function FavoritesPanel({ open, onClose, onOpen }: FavoritesPanelProps) {
                   try {
                     await window.sqlStudio['favorites:remove']({ name: fav.name });
                     setItems((prev) => prev.filter((f) => f.name !== fav.name));
-                  } catch { /* 静默 */ }
+                  } catch (err) {
+                    // 不再静默：删除失败必须让用户知道（否则列表看起来"没反应"）
+                    window.alert(`删除失败：${err instanceof Error ? err.message : String(err)}`);
+                  }
                 }}
               >
                 <Trash2 size={13} /> 删除

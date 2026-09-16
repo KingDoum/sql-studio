@@ -3,7 +3,7 @@
  *
  * 目的：统一 Renderer 的“执行前写操作确认”与 Main 的“写操作标记 / 安全边界”，
  * 避免两处正则各自为政导致 CTE 包裹写操作、前置注释等被漏判
- * （对齐 docs/后续AI执行指令.md S3）。
+ * （对齐 docs/archive/后续AI执行指令.md S3；该文档已随执行完毕归档）。
  *
  * 策略：
  * - 明确只读：SELECT / SHOW / EXPLAIN / DESCRIBE / DESC / USE / SET / PRAGMA

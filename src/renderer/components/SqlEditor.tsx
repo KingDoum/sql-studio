@@ -548,16 +548,18 @@ function monacoThemeFor(theme: ThemeMode): string {
 function categoryToMonacoKind(
   cat: string,
 ): number {
-  // Monaco CompletionItemKind enum
+  // Monaco CompletionItemKind 枚举值（monaco-editor 0.56）：
+  // Method=0 Function=1 Field=3 Variable=4 Class=5 Value=13 Constant=14 Keyword=17 Text=18 Snippet=27
+  // 历史实现有错位（keyword 用了 Constant 的 14、column 用了 Variable 的 4、ai 用了 Value 的 13）。
   const kinds: Record<string, number> = {
-    keyword: 14, // Keyword
-    database: 0,  // Method/property? use 0 (Method)
-    table: 1,     // Function? use 1 (Function)
-    column: 4,    // Field
-    ai: 13,       // Snippet
-    function: 1,
+    keyword: 17,  // Keyword
+    database: 5,  // Class（库作为容器）
+    table: 1,     // Function（表）
+    column: 3,    // Field（字段）
+    ai: 27,       // Snippet
+    function: 1,  // Function
   };
-  return kinds[cat] ?? 9; // 9 = Text
+  return kinds[cat] ?? 18; // 18 = Text
 }
 
 function applyTokenizer(

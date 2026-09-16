@@ -121,6 +121,7 @@ describe('shortHash（SQL/库名指纹，LG-21 相关）', () => {
   it('同输入同输出，不同输入大概率不同', () => {
     expect(shortHash('SELECT 1')).toBe(shortHash('SELECT 1'));
     expect(shortHash('SELECT 1')).not.toBe(shortHash('SELECT 2'));
-    expect(shortHash('sales_db')).toMatch(/^sha256:[0-9a-f]{8}$/);
+    // 前缀必须与实际算法一致（FNV-1a 32 位）；历史上误写成 sha256:
+    expect(shortHash('sales_db')).toMatch(/^fnv1a:[0-9a-f]{8}$/);
   });
 });

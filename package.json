@@ -19,11 +19,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
-    "package": "npm run build && electron-builder --win"
+    "package": "npm run build && electron-builder --win",
+    "package:dir": "npm run build && electron-builder --win --dir --config.win.signAndEditExecutable=false"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.6.0",
-    "better-sqlite3": "^11.3.0",
+    "better-sqlite3": "^12.11.1",
     "electron-log": "^5.2.0",
     "exceljs": "^4.4.0",
     "lucide-react": "^0.454.0",

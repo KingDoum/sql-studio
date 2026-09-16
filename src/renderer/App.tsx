@@ -68,6 +68,8 @@ function App() {
   const [favoriteName, setFavoriteName] = useState<string | null>(null);
   const [favoriteSql, setFavoriteSql] = useState('');
   const [showTableFields, setShowTableFields] = useState(true);
+  /** safeStorage 不可用（密码仅 base64 混淆）时的提示开关。 */
+  const [securityWarning, setSecurityWarning] = useState(false);
   const sqlEditorRef = useRef<SqlEditorHandle | null>(null);
 
   /** 合法主题集合（AppearancePanel 唯一来源）。 */
@@ -158,6 +160,18 @@ function App() {
       setLogSink(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 安全存储状态：safeStorage 不可用时密码只是 base64 混淆（非真加密）→ 状态栏提示
+  useEffect(() => {
+    const api = window.sqlStudio['app:securityStatus'];
+    // 旧主进程 / 测试 mock 可能没有该通道：不能直接调用（会同步抛 TypeError 打断渲染）
+    if (typeof api !== 'function') return;
+    void api()
+      .then((s) => setSecurityWarning(!s.encryptionAvailable))
+      .catch(() => {
+        // 查询失败：不提示（不阻塞主流程）
+      });
   }, []);
 
   // 启动时读取主题/调试模式设置并应用
@@ -295,8 +309,9 @@ function App() {
     }
     if (!filePath) return;
     try {
-      const { content } = await window.sqlStudio['script:open']({ filePath });
-      openTabFromFile(filePath, content);
+      const { content, mtimeMs } = await window.sqlStudio['script:open']({ filePath });
+      // 记录 mtime：后续保存前对比，检测文件是否被外部编辑器改过
+      openTabFromFile(filePath, content, mtimeMs);
       void ensureScriptDir(filePath);
     } catch (err) {
       window.alert(err instanceof Error ? err.message : '打开失败');
@@ -324,22 +339,44 @@ function App() {
     const finalPath = filePath.endsWith('.sql') ? filePath : `${filePath}.sql`;
     try {
       await window.sqlStudio['script:save']({ filePath: finalPath, content: activeTab.sql });
-      markSaved(activeTab.id, finalPath);
+      // 记录新 mtime：另存为后的路径成为后续冲突检测的基线
+      markSaved(activeTab.id, finalPath, await statScript(finalPath));
       void ensureScriptDir(finalPath);
     } catch (err) {
       window.alert(err instanceof Error ? err.message : '保存失败');
     }
   };
 
+  /** 读取文件 mtime（外部修改检测用）；失败返回 undefined，不阻塞保存流程。 */
+  const statScript = async (filePath: string): Promise<number | undefined> => {
+    try {
+      const { mtimeMs } = await window.sqlStudio['script:stat']({ filePath });
+      return mtimeMs ?? undefined;
+    } catch {
+      return undefined;
+    }
+  };
+
   const handleSave = async () => {
     if (!activeTab) return;
     if (activeTab.filePath) {
+      // 外部修改检测：文件在别的编辑器里被保存过 → 先让用户确认，避免静默覆盖
+      if (activeTab.mtimeMs !== undefined) {
+        const diskMtime = await statScript(activeTab.filePath);
+        if (diskMtime !== undefined && diskMtime !== activeTab.mtimeMs) {
+          const ok = window.confirm(
+            '该文件已被外部修改（可能由其他编辑器保存过）。\n继续保存会覆盖外部改动，是否继续？',
+          );
+          if (!ok) return;
+        }
+      }
       try {
         await window.sqlStudio['script:save']({
           filePath: activeTab.filePath,
           content: activeTab.sql,
         });
-        markSaved(activeTab.id, activeTab.filePath);
+        // 保存成功后刷新 mtime 基线
+        markSaved(activeTab.id, activeTab.filePath, await statScript(activeTab.filePath));
       } catch (err) {
         window.alert(err instanceof Error ? err.message : '保存失败');
       }
@@ -616,6 +653,14 @@ function App() {
         <span className="status-item">连接：{currentConn?.name ?? '未连接'}</span>
         <span className="status-item">数据库：{currentDb ?? '—'}</span>
         <span className="status-item">状态：{queryStatusText}</span>
+        {securityWarning && (
+          <span
+            className="status-item status-warn"
+            title="当前系统的安全存储（safeStorage）不可用：连接密码仅以 base64 混淆保存，不是真加密。请仅在受信任的本机使用。"
+          >
+            <AlertTriangle size={11} /> 密码为降级存储
+          </span>
+        )}
         {execution?.result && !executing && (
           <>
             <span className="status-item">耗时：{execution.result.totalElapsedMs} ms</span>

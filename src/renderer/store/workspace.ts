@@ -56,14 +56,14 @@ interface WorkspaceState {
   /** 新建空标签，返回其 id。 */
   newTab(): string;
   /** 从文件打开新标签（已存在同 filePath 则激活之），返回激活 tab id。 */
-  openTabFromFile(filePath: string, sql: string): string;
+  openTabFromFile(filePath: string, sql: string, mtimeMs?: number): string;
   /** 关闭标签（调用方先确认 dirty）。 */
   closeTab(id: string): void;
   setActiveTab(id: string): void;
   /** 编辑器内容变化：标记 dirty。 */
   updateSql(id: string, sql: string): void;
-  /** 保存成功后标记干净并记录路径。 */
-  markSaved(id: string, filePath: string): void;
+  /** 保存成功后标记干净并记录路径（含新的 mtime，供外部修改检测）。 */
+  markSaved(id: string, filePath: string, mtimeMs?: number): void;
   /** 启动恢复：用已验证快照一次性 hydrate（不恢复 execution/results/executing）。 */
   hydrateFromSnapshot(snapshot: WorkspaceSnapshot): void;
   setExecution(rec: ExecutionRecord): void;
@@ -92,7 +92,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     return tab.id;
   },
 
-  openTabFromFile: (filePath, sql) => {
+  openTabFromFile: (filePath, sql, mtimeMs) => {
     const existing = get().tabs.find((t) => t.filePath === filePath);
     if (existing) {
       set({ activeTabId: existing.id });
@@ -104,6 +104,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       sql,
       filePath,
       isDirty: false,
+      mtimeMs,
     };
     set((s) => ({ tabs: [...s.tabs, tab], activeTabId: tab.id }));
     return tab.id;
@@ -131,10 +132,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }));
   },
 
-  markSaved: (id, filePath) => {
+  markSaved: (id, filePath, mtimeMs) => {
     set((s) => ({
       tabs: s.tabs.map((t) =>
-        t.id === id ? { ...t, filePath, title: basename(filePath), isDirty: false } : t,
+        t.id === id ? { ...t, filePath, title: basename(filePath), isDirty: false, mtimeMs } : t,
       ),
     }));
   },

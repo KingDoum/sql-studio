@@ -175,12 +175,20 @@ export interface EditorTab {
   isDirty: boolean;
   /** 该 Tab 关联的当前连接（可选，可被全局当前连接覆盖）。 */
   connectionId?: string;
+  /**
+   * 最近一次（打开或保存）的文件 mtime（毫秒）。
+   * 保存前与磁盘对比，检测文件是否被外部编辑器修改过（冲突提示）。
+   * 从工作区恢复的标签没有该值 → 首次保存跳过一次冲突检查。
+   */
+  mtimeMs?: number;
 }
 
 /** 脚本文件读写结果。 */
 export interface ScriptFileResult {
   filePath: string;
   content: string;
+  /** 读取时的文件 mtime（毫秒），供外部修改检测。 */
+  mtimeMs?: number;
 }
 
 /** 保存脚本请求。 */
@@ -627,4 +635,20 @@ export interface LogsClearRequest {
 export interface LogsClearResult {
   cleared: boolean;
   removedFileCount: number;
+}
+
+// ─────────────────────────────────────────────────────────────
+// 安全存储状态与脚本文件元信息
+// ─────────────────────────────────────────────────────────────
+
+/** 安全存储状态：供 Renderer 提示「密码为降级存储（非真加密）」。 */
+export interface SecurityStatus {
+  /** safeStorage 是否可用；false 表示连接密码只是 base64 混淆，不是真加密。 */
+  encryptionAvailable: boolean;
+}
+
+/** 脚本文件元信息（外部修改检测用）。 */
+export interface ScriptStatResult {
+  /** 文件 mtime（毫秒）；文件不存在时为 null。 */
+  mtimeMs: number | null;
 }

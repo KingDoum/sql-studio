@@ -3,7 +3,7 @@
  *
  * 启动时序：
  *   1. app.whenReady() → 初始化所有服务（Security / MetadataStore / ConnectionManager / FavoritesStore）
- *   2. registerIpc() → 注册全部 27 个 IPC handler
+ *   2. registerIpc() → 注册全部 41 个 IPC handler
  *   3. createWindow() → 创建 Electron 窗口，加载 preload + 渲染进程
  */
 import { app, BrowserWindow, ipcMain, safeStorage } from 'electron';
@@ -193,9 +193,26 @@ app.whenReady().then(() => {
       aiService,
       workspaceStore,
       logService,
+      security,
     },
     ipcMain,
   );
+
+  // 进程级异常事件（补充渲染进程之外的崩溃路径）。
+  // 不启用 electron-log 的 eventLogger：它会绕过本项目的日志脱敏链路直接写文件，
+  // 改为手动注册等价事件，统一走 logService.append（受控路径 + 脱敏 + 轮转）。
+  app.on('child-process-gone', (_e, details) => {
+    logService?.append({
+      entries: [{
+        timestamp: new Date().toISOString(),
+        level: 'error',
+        source: 'main',
+        event: 'app.child-process-gone',
+        message: `子进程退出 type=${details.type} reason=${details.reason} exitCode=${details.exitCode}`,
+      }],
+      flush: true,
+    });
+  });
 
   // 3. 创建窗口
   createWindow();

@@ -60,6 +60,9 @@ function mockFullSqlStudio(overrides: Record<string, unknown> = {}) {
     })),
     'settings:get': vi.fn(async () => null),
     'settings:set': vi.fn(async () => ({ saved: true })),
+    // 安全存储状态（密码加密可用性提示）与脚本元信息（外部修改检测）
+    'app:securityStatus': vi.fn(async () => ({ encryptionAvailable: true })),
+    'script:stat': vi.fn(async () => ({ mtimeMs: 1000 })),
     'dialog:showSaveDialog': vi.fn(async () => '/save/script.sql'),
     'dialog:showOpenDialog': vi.fn(async () => '/save/script.sql'),
     'connections:testById': vi.fn(async () => ({ ok: true, message: 'ok' })),

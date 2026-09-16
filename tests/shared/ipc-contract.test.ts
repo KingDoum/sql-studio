@@ -51,6 +51,7 @@ describe('IPC 契约', () => {
     // 编译期校验：以下字面量均可赋值给 IpcChannel
     const channels: IpcChannel[] = [
       'app:ping',
+      'app:securityStatus',
       'connections:list',
       'connections:save',
       'connections:remove',
@@ -66,6 +67,7 @@ describe('IPC 契约', () => {
       'query:cancel',
       'script:open',
       'script:save',
+      'script:stat',
       'export:excel',
       'export:insert',
       'export:csv',

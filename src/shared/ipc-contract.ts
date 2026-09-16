@@ -34,6 +34,7 @@ import type {
 export const IPC_CHANNELS = {
   // 应用
   ping: 'app:ping',
+  'app:securityStatus': 'app:securityStatus',
 
   // 连接管理
   'connections:list': 'connections:list',
@@ -57,6 +58,7 @@ export const IPC_CHANNELS = {
   // 脚本文件
   'script:open': 'script:open',
   'script:save': 'script:save',
+  'script:stat': 'script:stat',
 
   // 导出
   'export:excel': 'export:excel',
@@ -108,6 +110,7 @@ export type IpcChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];
 
 export interface IpcRequestMap {
   'app:ping': void;
+  'app:securityStatus': void;
 
   'connections:list': void;
   'connections:save': ConnectionInput & { id?: string };
@@ -127,6 +130,7 @@ export interface IpcRequestMap {
 
   'script:open': { filePath: string };
   'script:save': ScriptSaveRequest;
+  'script:stat': { filePath: string };
 
   'export:excel': ExportExcelRequest;
   'export:insert': ExportInsertRequest;
@@ -171,6 +175,7 @@ export interface IpcRequestMap {
 
 export interface IpcResponseMap {
   'app:ping': string;
+  'app:securityStatus': import('./types').SecurityStatus;
 
   'connections:list': ConnectionSummary[];
   'connections:save': ConnectionSummary;
@@ -190,6 +195,7 @@ export interface IpcResponseMap {
 
   'script:open': ScriptFileResult;
   'script:save': { filePath: string };
+  'script:stat': import('./types').ScriptStatResult;
 
   'export:excel': ExportResult;
   'export:insert': ExportResult;

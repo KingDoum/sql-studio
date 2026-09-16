@@ -18,6 +18,8 @@ export interface FsLike {
   readFileSync(p: string, enc: BufferEncoding): string;
   writeFileSync(p: string, content: string, enc: BufferEncoding): void;
   mkdirSync(p: string, opts?: { recursive?: boolean }): void;
+  /** 文件元信息（可选：轻量 mock 可不提供，此时 stat() 返回 null）。 */
+  statSync?(p: string): { mtimeMs: number };
 }
 
 const nodeFs: FsLike = {
@@ -25,6 +27,7 @@ const nodeFs: FsLike = {
   readFileSync: (p, enc) => fs.readFileSync(p, enc),
   writeFileSync: (p, content, enc) => fs.writeFileSync(p, content, enc),
   mkdirSync: (p, opts) => fs.mkdirSync(p, opts),
+  statSync: (p) => fs.statSync(p),
 };
 
 export class ScriptStore {
@@ -54,6 +57,20 @@ export class ScriptStore {
   /** 是否存在。 */
   exists(filePath: string): boolean {
     return this.fsModule.existsSync(filePath);
+  }
+
+  /**
+   * 文件 mtime（毫秒）；不存在 / 读取失败 / 底层未提供能力时返回 null。
+   * 供「外部修改检测」使用：打开文件时记录，保存前对比磁盘上的值。
+   */
+  stat(filePath: string): number | null {
+    try {
+      if (!this.fsModule.statSync) return null;
+      if (!this.fsModule.existsSync(filePath)) return null;
+      return this.fsModule.statSync(filePath).mtimeMs;
+    } catch {
+      return null;
+    }
   }
 
   /** 由内容推断默认文件名（首条非空语句前若干字符）。 */

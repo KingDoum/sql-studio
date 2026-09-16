@@ -87,6 +87,8 @@ function makeFakeMonaco() {
     },
     editor: {
       defineTheme: vi.fn(),
+      // Monaco 全局主题设置（SqlEditor 的 onMount 与 theme effect 都会调用）
+      setTheme: vi.fn(),
       getModels: vi.fn(() => []),
     },
     KeyMod: { CtrlCmd: 1, Shift: 2 },
@@ -208,6 +210,35 @@ describe('SqlEditor', () => {
     );
     expect(await screen.findByTestId('monaco-stub')).toBeTruthy();
     expect(editorMock.editorTheme).toBe('sql-studio-dark');
+  });
+
+  it('主题在 Monaco 挂载前异步变更 → onMount 应用最新主题（白天模式启动不残留深色）', async () => {
+    cleanup();
+    // 首渲染 theme=dark（App 读取设置前的初值）
+    const { rerender } = render(
+      <SqlEditor
+        tab={tab}
+        connectionId={null}
+        onSqlChange={() => {}}
+        onExecute={() => {}}
+        theme="dark"
+      />,
+    );
+    await screen.findByTestId('monaco-stub');
+    // 设置异步返回 light：主题在 Monaco 挂载之前就已变更
+    rerender(
+      <SqlEditor
+        tab={tab}
+        connectionId={null}
+        onSqlChange={() => {}}
+        onExecute={() => {}}
+        theme="light"
+      />,
+    );
+    // Monaco 此刻才挂载：必须应用最新主题，而不是首次渲染闭包里的 dark
+    const { monaco, monacoImpl } = makeFakeMonaco();
+    editorMock.onMountCb?.(makeFakeEditor(), monaco);
+    expect(monacoImpl.editor.setTheme).toHaveBeenLastCalledWith('sql-studio-light');
   });
 });
 

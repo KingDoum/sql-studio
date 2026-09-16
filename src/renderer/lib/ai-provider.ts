@@ -93,7 +93,8 @@ export function createAiInlineProvider(
     _token: unknown,
   ) => Promise<{ items: Array<{ insertText: string; range: unknown }> }>;
   dispose: () => void;
-  disposeInlineCompletions?: () => void;
+  /** Monaco 回收「某次补全结果」时调用（语义与 dispose 完全不同，见实现注释）。 */
+  disposeInlineCompletions?: (completions?: unknown, reason?: unknown) => void;
 } {
   let cancelled = false;
   // 防抖：共享定时器；新调用到来时把旧等待 resolve 为 'skip'（避免旧 Promise 悬挂）
@@ -164,7 +165,6 @@ export function createAiInlineProvider(
         return { items: [] };
       }
 
-      cancelled = false;
       skipPendingDebounce();
 
       // 防抖：停止输入 debounceMs 后才请求。
@@ -296,12 +296,24 @@ export function createAiInlineProvider(
       }
     },
     dispose: () => {
+      // provider 级销毁：仅在 registerInlineCompletionsProvider 的 disposable.dispose()
+      // 或组件卸载/syncAiProvider 重建时调用，此后本实例不再发起任何请求。
       cancelled = true;
       cleanupTimer();
     },
+    /**
+     * ⚠️ Monaco 的 disposeInlineCompletions 是「某次补全结果不再使用、可被回收」的回调
+     * （签名 (completions, reason)，reason 为 lostRace / tokenCancellation / empty / notTaken），
+     * **不是 provider 级销毁**。用户继续输入时 Monaco 会频繁调用它。
+     *
+     * 历史 bug：此处曾设置 cancelled = true，导致第一次结果被回收后 provider 永久失效，
+     * 之后所有 provideInlineCompletions 都在首行直接返回空 —— 表现为「AI 补全再也不触发」，
+     * 且由于 cancelled 检查先于日志，调试面板看不到任何原因码。
+     *
+     * 本 provider 返回的结果不持有外部资源，故此处保持 no-op：生命周期只由 dispose() 控制。
+     */
     disposeInlineCompletions: () => {
-      cancelled = true;
-      cleanupTimer();
+      // 故意留空
     },
   };
 }

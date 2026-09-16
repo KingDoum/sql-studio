@@ -137,6 +137,9 @@ export const SqlEditor = React.forwardRef<SqlEditorHandle, SqlEditorProps>(funct
   /** AI 配置的实时镜像（供 onMount/sync 闭包读取最新值，避免时序闭包陈旧）。 */
   const aiStateRef = useRef<AiProviderState>(aiState);
   aiStateRef.current = aiState;
+  /** 主题实时镜像：onMount 的闭包 theme 恒为首次渲染值（'dark'），必须读 ref 取最新主题。 */
+  const themeRef = useRef<ThemeMode>(theme);
+  themeRef.current = theme;
   /** 最新 syncAiProvider 引用（onMount 用 ref 调用，避免闭包陈旧）。 */
   const syncAiProviderRef = useRef<() => void>(() => {});
   const disposeAiProviderRef = useRef<() => void>(() => {});
@@ -217,6 +220,13 @@ export const SqlEditor = React.forwardRef<SqlEditorHandle, SqlEditorProps>(funct
   useEffect(() => {
     editorRef.current?.updateOptions({ fontSize });
   }, [fontSize]);
+
+  // 主题变化 → 显式同步 Monaco 全局主题。
+  // 不依赖 @monaco-editor/react 内部的主题更新时序（它带 isEditorReady 条件，
+  // 若主题在 Monaco 加载完成前就已确定，那次变化会被跳过）。
+  useEffect(() => {
+    monacoRef.current?.editor.setTheme(monacoThemeFor(theme));
+  }, [theme]);
 
   // 获取执行语句：选区优先；无选区时执行整个编辑器内容（支持多条 `;` 分隔的语句都出结果）
   const getExecuteSql = useCallback((): string => {
@@ -357,7 +367,10 @@ const beforeMount: BeforeMount = useCallback((monaco) => {
   const onMount: OnMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
-    editor.updateOptions({ theme: monacoThemeFor(theme) });
+    // 注意：theme 不是合法的 editor option，`updateOptions({ theme })` 会被 Monaco 静默忽略，
+    // 必须用全局 setTheme。这里也不能读闭包里的 theme（首次渲染恒为 'dark'），否则
+    // 「设置里是白天模式，编辑器却启动为深色，切换一次主题才正常」——故读 themeRef 取最新值。
+    monaco.editor.setTheme(monacoThemeFor(themeRef.current));
     // 初装 tokenizer（空 schema）
     applyTokenizer(monaco, null);
     // 阶段 2 修复：Monaco 挂载时若 AI 配置已加载，立即注册 inline provider。

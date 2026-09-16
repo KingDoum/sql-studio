@@ -501,6 +501,38 @@ describe('createAiInlineProvider · 可调限流参数（阶段 C）', () => {
     expect(res.items).toHaveLength(0);
   });
 
+  it('disposeInlineCompletions 是「结果级回收」，不停掉 provider：后续输入仍能触发补全', async () => {
+    const mock = makeSqlStudioMock();
+    const provider = createAiInlineProvider({ enabled: true, config: CONFIG });
+
+    // 第一次补全：正常返回建议
+    const p1 = provider.provideInlineCompletions(
+      modelStub('SELECT * FROM us', { lineNumber: 1, column: 16 }),
+      { lineNumber: 1, column: 16 }, null, null,
+    );
+    await vi.advanceTimersByTimeAsync(901);
+    const r1 = await p1;
+    expect(r1.items).toHaveLength(1);
+    expect(mock.calls).toHaveLength(1);
+
+    // 用户继续输入 → Monaco 回收上一次结果（lostRace 是最高频的回收原因）
+    provider.disposeInlineCompletions?.(r1.items, { kind: 'lostRace' });
+
+    // 越过最小请求间隔后再次输入
+    await vi.advanceTimersByTimeAsync(2600);
+    const p2 = provider.provideInlineCompletions(
+      modelStub('SELECT * FROM users', { lineNumber: 1, column: 19 }),
+      { lineNumber: 1, column: 19 }, null, null,
+    );
+    await vi.advanceTimersByTimeAsync(901);
+    const r2 = await p2;
+
+    // 历史 bug：此处曾把结果级回收当成 provider 销毁（cancelled=true），
+    // 导致第二次既不发请求也返回空 → 表现为「AI 补全再也不触发」。
+    expect(mock.calls).toHaveLength(2);
+    expect(r2.items).toHaveLength(1);
+  });
+
   it('限流跳过日志不会无限刷屏（1s 节流）', async () => {
     const mock = makeSqlStudioMock();
     const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});

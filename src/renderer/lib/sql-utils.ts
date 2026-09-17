@@ -9,6 +9,7 @@
  * 状态扫描：scanCodeState 逐字符标记每个位置是否处于引号/注释内，
  * 所有边界判断（; 切分）都基于该状态，避免把字符串/注释里的分号当分隔符。
  */
+import { quoteIdent } from '@shared/sql-ident';
 
 export type SqlCodeState =
   | 0 // code
@@ -108,14 +109,10 @@ export function getCurrentStatement(sql: string, offset: number): string {
   return sql.slice(start, end).trim();
 }
 
-/** 反引号转义（MySQL 内嵌反引号写作 ``）。 */
-export function escapeIdent(name: string): string {
-  return name.replace(/`/g, '``');
-}
-
-/** 对象树双击表生成 SELECT（任务 8 验收：双击表生成 SELECT 到编辑器）。 */
+/** 对象树双击表生成 SELECT（任务 8 验收：双击表生成 SELECT 到编辑器）。
+ * 标识符经 quoteIdent 转义（@shared/sql-ident 单一来源），本文件不再自行实现转义。 */
 export function buildSelectSql(database: string, table: string): string {
-  return `SELECT * FROM \`${escapeIdent(database)}\`.\`${escapeIdent(table)}\`;`;
+  return `SELECT * FROM ${quoteIdent(database)}.${quoteIdent(table)};`;
 }
 
 /** 从文件路径取显示名（末段文件名）。 */

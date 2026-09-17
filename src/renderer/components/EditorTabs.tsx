@@ -6,7 +6,7 @@
  * 纯展示组件：数据与动作由父级（App + workspace store）注入，
  * 便于单测（mock 回调 / window.confirm）。
  */
-import { Plus, FilePlus2, FolderOpen, Save, X } from 'lucide-react';
+import { Plus, FilePlus2, FolderOpen, Save, SaveAll, X } from 'lucide-react';
 import type { EditorTab } from '@shared/types';
 
 export interface EditorTabsProps {
@@ -42,23 +42,6 @@ export function EditorTabs({
 
   return (
     <div className="tabs-bar">
-      <div className="tabs-actions">
-        <button title="新建脚本" onClick={onNew}>
-          <FilePlus2 size={13} />
-          <span>新建</span>
-        </button>
-        <button title="打开脚本" onClick={onOpen}>
-          <FolderOpen size={13} />
-          <span>打开</span>
-        </button>
-        <button title="保存 (Ctrl+S)" onClick={onSave}>
-          <Save size={13} />
-          <span>保存</span>
-        </button>
-        <button title="另存为" onClick={onSaveAs}>
-          另存为
-        </button>
-      </div>
       <div className="tabs-scroll">
         {tabs.map((tab) => (
           <div
@@ -91,6 +74,21 @@ export function EditorTabs({
           <Plus size={14} />
         </button>
         {tabs.length === 0 && <span className="tabs-empty">无打开的脚本</span>}
+      </div>
+      {/* 文件操作：并入标签行右侧（阶段 1 合并工具栏），仅图标 + tooltip/aria-label */}
+      <div className="tabs-actions">
+        <button className="tabs-action-btn" title="新建脚本" aria-label="新建脚本" onClick={onNew}>
+          <FilePlus2 size={15} />
+        </button>
+        <button className="tabs-action-btn" title="打开脚本" aria-label="打开脚本" onClick={onOpen}>
+          <FolderOpen size={15} />
+        </button>
+        <button className="tabs-action-btn" title="保存 (Ctrl+S)" aria-label="保存" onClick={onSave}>
+          <Save size={15} />
+        </button>
+        <button className="tabs-action-btn" title="另存为" aria-label="另存为" onClick={onSaveAs}>
+          <SaveAll size={15} />
+        </button>
       </div>
     </div>
   );

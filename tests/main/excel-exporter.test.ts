@@ -119,4 +119,87 @@ describe('ExcelExporter', () => {
     expect(ws.getCell('A2').value).toBe(1);
     expect(ws.getCell('C2').value).toBe(99);
   });
+
+  it('数值型列的字符串值转真数值（DECIMAL 可直接求和）', async () => {
+    const exporter = new ExcelExporter();
+    const numColumns: ColumnMeta[] = [
+      { name: 'amount', type: 'decimal', nullable: true, isPrimary: false, isUnique: false },
+      { name: 'qty', type: 'int', nullable: true, isPrimary: false, isUnique: false },
+    ];
+    await exporter.export({
+      options: { filePath: file, freezeHeader: false, includeMeta: false },
+      columns: numColumns,
+      rows: [['1234.56', '42']],
+    });
+    const wb = await readBack(file);
+    const ws = wb.worksheets[0];
+    expect(ws.getCell('A2').value).toBe(1234.56);
+    expect(typeof ws.getCell('A2').value).toBe('number');
+    expect(ws.getCell('B2').value).toBe(42);
+  });
+
+  it('超精度数值保持文本（不静默丢精度）', async () => {
+    const exporter = new ExcelExporter();
+    const numColumns: ColumnMeta[] = [
+      { name: 'big_dec', type: 'decimal(38,0)', nullable: true, isPrimary: false, isUnique: false },
+      { name: 'big_int', type: 'bigint', nullable: true, isPrimary: false, isUnique: false },
+      { name: 'long_dec', type: 'decimal(20,16)', nullable: true, isPrimary: false, isUnique: false },
+    ];
+    await exporter.export({
+      options: { filePath: file, freezeHeader: false, includeMeta: false },
+      columns: numColumns,
+      // 整数超 IEEE754 安全范围 / 小数有效数字超 Excel 的 15 位
+      rows: [['9007199254740993', '9007199254740993', '1.2345678901234567']],
+    });
+    const wb = await readBack(file);
+    const ws = wb.worksheets[0];
+    expect(ws.getCell('A2').value).toBe('9007199254740993');
+    expect(ws.getCell('B2').value).toBe('9007199254740993');
+    expect(ws.getCell('C2').value).toBe('1.2345678901234567');
+  });
+
+  it('非数值型列的数字串保持文本（前导零/编码不被改写）', async () => {
+    const exporter = new ExcelExporter();
+    const strColumns: ColumnMeta[] = [
+      { name: 'code', type: 'varchar', nullable: true, isPrimary: false, isUnique: false },
+      { name: 'phone', type: 'char(11)', nullable: true, isPrimary: false, isUnique: false },
+    ];
+    await exporter.export({
+      options: { filePath: file, freezeHeader: false, includeMeta: false },
+      columns: strColumns,
+      rows: [['00123', '013800138000']],
+    });
+    const wb = await readBack(file);
+    const ws = wb.worksheets[0];
+    expect(ws.getCell('A2').value).toBe('00123');
+    expect(ws.getCell('B2').value).toBe('013800138000');
+  });
+
+  it('小数尾部零不影响数值化（0.30 → 0.3）', async () => {
+    const exporter = new ExcelExporter();
+    await exporter.export({
+      options: { filePath: file, freezeHeader: false, includeMeta: false },
+      columns: [
+        { name: 'price', type: 'decimal(10,2)', nullable: true, isPrimary: false, isUnique: false },
+      ],
+      rows: [['0.30']],
+    });
+    const wb = await readBack(file);
+    expect(wb.worksheets[0].getCell('A2').value).toBe(0.3);
+  });
+
+  it('BIT 列归一化后的 0/1 写入数值', async () => {
+    const exporter = new ExcelExporter();
+    await exporter.export({
+      options: { filePath: file, freezeHeader: false, includeMeta: false },
+      columns: [
+        { name: 'is_active', type: 'bit', nullable: true, isPrimary: false, isUnique: false },
+      ],
+      rows: [[1], [0]],
+    });
+    const wb = await readBack(file);
+    const ws = wb.worksheets[0];
+    expect(ws.getCell('A2').value).toBe(1);
+    expect(ws.getCell('A3').value).toBe(0);
+  });
 });

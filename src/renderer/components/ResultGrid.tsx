@@ -17,6 +17,7 @@
 import { useMemo, useRef, useState, useCallback, useEffect } from 'react';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import type { CellValue, ColumnMeta } from '@shared/types';
+import { isNumericColumnType } from '@shared/column-type';
 import { compareCell, formatCell, matchesFilter } from '@renderer/lib/cell-format';
 
 export interface ResultGridProps {
@@ -45,6 +46,8 @@ export function ResultGrid({ columns, rows, showFilter = true }: ResultGridProps
   const [toast, setToast] = useState<string | null>(null);
   /** 列宽（单一来源：表头/筛选/表体共用）。下标 → 像素宽。 */
   const [colWidths, setColWidths] = useState<Record<number, number>>({});
+  /** 数值列标记（右对齐 + 等宽数字）：与 Main 侧 Excel 导出的判定共用同一实现 */
+  const numericCols = useMemo(() => columns.map((c) => isNumericColumnType(c.type)), [columns]);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** 拖拽状态：列下标 + 起始 X + 起始宽。 */
@@ -176,7 +179,7 @@ export function ResultGrid({ columns, rows, showFilter = true }: ResultGridProps
               <div
                 // key 用列下标：结果集可能含同名列（JOIN），用列名会重复 key
                 key={`h-${ci}`}
-                className={`grid-header-cell${sortCol === ci && sortDir !== 'none' ? ' sorting' : ''}`}
+                className={`grid-header-cell${sortCol === ci && sortDir !== 'none' ? ' sorting' : ''}${numericCols[ci] ? ' num-cell' : ''}`}
                 onClick={() => handleSortClick(ci)}
                 title={c.comment || c.type}
               >
@@ -237,7 +240,7 @@ export function ResultGrid({ columns, rows, showFilter = true }: ResultGridProps
                         return (
                           <div
                             key={`${absIdx}-${ci}`}
-                            className={`grid-cell${isNull ? ' null-cell' : ''}`}
+                            className={`grid-cell${isNull ? ' null-cell' : ''}${numericCols[ci] ? ' num-cell' : ''}`}
                             title={text.length > 120 ? text : undefined}
                             onDoubleClick={() => void copyCell(cell)}
                           >

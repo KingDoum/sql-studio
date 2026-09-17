@@ -22,6 +22,7 @@ import type {
   CellValue,
 } from '@shared/types';
 import { classifyStatement } from '@shared/sql-classify';
+import { columnTypeFromCode, columnTypeFromRaw } from '@shared/column-type';
 
 /** 底层执行函数返回的原始结果集。 */
 export interface RawResultSet {
@@ -124,8 +125,8 @@ function extractColumns(fields: unknown): ColumnMeta[] {
     const name = String(f.name ?? f.column ?? '');
     const rawType = f.type ?? f.dbType ?? 'unknown';
     const type = typeof rawType === 'number'
-      ? mysql2TypeToName(rawType)
-      : normalizeType(String(rawType));
+      ? columnTypeFromCode(rawType)
+      : columnTypeFromRaw(String(rawType));
     return {
       name,
       type,
@@ -141,57 +142,33 @@ function extractColumns(fields: unknown): ColumnMeta[] {
   });
 }
 
-/** mysql2 数字类型码 → 可读类型名（QueryService 查询结果的 f.type 是数字）。 */
-function mysql2TypeToName(code: number): string {
-  switch (code) {
-    case 0: case 246: return 'decimal';
-    case 1: return 'tinyint';
-    case 2: return 'smallint';
-    case 3: return 'int';
-    case 4: return 'float';
-    case 5: return 'double';
-    case 7: case 12: return 'datetime';
-    case 8: return 'bigint';
-    case 9: return 'mediumint';
-    case 10: return 'date';
-    case 11: return 'time';
-    case 13: return 'year';
-    case 15: case 253: return 'varchar';
-    case 16: return 'bit';
-    case 245: return 'json';
-    case 247: return 'enum';
-    case 248: return 'set';
-    case 249: case 250: case 251: case 252: return 'blob';
-    case 254: return 'char';
-    case 255: return 'geometry';
-    default: return 'unknown';
-  }
+// 列类型归一化统一在 @shared/column-type（columnTypeFromCode / columnTypeFromRaw），
+// 本文件不再自行实现，避免与对象浏览器字段列表的类型名漂移。
+
+/**
+ * 列类型是否为 MySQL BIT（`bit` / `bit(1)` / `bit(8)` 等）。
+ * 注意 `\b` 边界：避免误匹配 `bitmap` 这类非 BIT 类型。
+ */
+function isBitColumn(type?: string): boolean {
+  return typeof type === 'string' && /^bit\b/i.test(type.trim());
 }
 
-/** 把 mysql2 类型名粗略归一为 ColumnType。 */
-function normalizeType(raw: string): ColumnMeta['type'] {
-  const t = raw.toLowerCase();
-  if (t.includes('int')) return t.includes('big') ? 'bigint' : 'int';
-  if (t.includes('decimal') || t.includes('numeric')) return 'decimal';
-  if (t.includes('float')) return 'float';
-  if (t.includes('double')) return 'double';
-  if (t.includes('varchar')) return 'varchar';
-  if (t.includes('char') && !t.includes('varchar')) return 'char';
-  if (t.includes('text') || t.includes('blob') && t.includes('long')) return 'text';
-  if (t.includes('blob')) return 'blob';
-  if (t.includes('datetime')) return 'datetime';
-  if (t.includes('timestamp')) return 'timestamp';
-  if (t.includes('date')) return 'date';
-  if (t.includes('time')) return 'time';
-  if (t.includes('json')) return 'json';
-  if (t.includes('bool')) return 'boolean';
-  if (t.includes('enum')) return 'enum';
-  return raw;
+/**
+ * BIT 字节（大端）→ 数值；超出安全整数范围返回 null。
+ * mysql2 对 BIT(n) 统一返回 ceil(n/8) 字节的大端 Buffer，
+ * 6 字节（48bit）以内可无精度损失地转成 number；更长则保持二进制。
+ */
+function bitBytesToNumber(bytes: Uint8Array): number | null {
+  if (bytes.length === 0 || bytes.length > 6) return null;
+  let n = 0;
+  for (let i = 0; i < bytes.length; i++) n = n * 256 + bytes[i];
+  return Number.isSafeInteger(n) ? n : null;
 }
 
 /**
  * 把一行记录转为 CellValue[][]（NULL→null，Buffer→Uint8Array，Date→本地可读，其余保持）。
- * 传入 columns 以便按「列类型」决定日期格式（DATE 只显示日期、DATETIME 保留时间）。
+ * 传入 columns 以便按「列类型」决定日期格式（DATE 只显示日期、DATETIME 保留时间）
+ * 以及 BIT 列归一化。
  */
 function rowsToCells(rows: Record<string, unknown>[], columns: ColumnMeta[] = []): CellValue[][] {
   return rows.map((row) => {
@@ -202,7 +179,12 @@ function rowsToCells(rows: Record<string, unknown>[], columns: ColumnMeta[] = []
       // Buffer 是 Uint8Array 的子类，统一在这一条路径处理（历史实现的 Buffer 分支不可达）。
       // 复制为等长副本：不能返回 v.buffer —— 那会丢掉 byteOffset/byteLength，
       // Buffer 切片会读到整个底层内存池的数据。
-      if (v instanceof Uint8Array) return new Uint8Array(v);
+      if (v instanceof Uint8Array) {
+        // BIT 列按 MySQL 语义显示为数值（BIT(1) → 0/1），而不是「[二进制 N 字节]」。
+        // 在此处归一化的收益：网格、数据预览、Excel/CSV/SQL 导出共用同一结果。
+        const bit = isBitColumn(columns[ci]?.type) ? bitBytesToNumber(v) : null;
+        return bit !== null ? bit : new Uint8Array(v);
+      }
       if (typeof v === 'object') return JSON.stringify(v);
       return v as CellValue;
     });

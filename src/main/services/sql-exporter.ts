@@ -9,6 +9,7 @@
 
 import fs from 'node:fs';
 import type { CellValue, ColumnMeta, ExportInsertRequest } from '@shared/types';
+import { quoteIdent, quoteQualifiedIdent } from '@shared/sql-ident';
 
 /** 写入器抽象（便于单测）。 */
 export interface Writer {
@@ -35,37 +36,8 @@ export function escapeSqlValue(v: CellValue): string {
   return `'${escaped}'`;
 }
 
-/**
- * 反引号转义单个标识符（库名/表名/列名）。
- * MySQL 中把反引号写成两个反引号即可安全内嵌，其余字符无需特殊处理。
- */
-export function escapeIdent(name: string): string {
-  return `\`${String(name).replace(/`/g, '``')}\``;
-}
-
-/**
- * 把用户输入的“表名”解析为安全标识符：
- * - 仅允许普通表名（table）或 database.table 两段；多余点号或非法分隔视为错误。
- * - 任何段都只按标识符转义，禁止把 SQL 片段（分号、括号、注释）拼进输出。
- * @throws 表名包含非法字符或为空时抛错。
- */
-export function resolveTableIdent(tableName: string): string {
-  const trimmed = String(tableName ?? '').trim();
-  if (!trimmed) throw new Error('导出表名为空');
-  const parts = trimmed.split('.');
-  if (parts.length > 2) {
-    throw new Error(`无效表名: ${tableName}`);
-  }
-  return parts.map((p) => {
-    const seg = p.trim();
-    if (!seg) throw new Error(`无效表名: ${tableName}`);
-    // 标识符内不允许注释/语句分隔等结构字符（反引号本身由 escapeIdent 转义）
-    if (/[;()\n\r]/.test(seg)) {
-      throw new Error(`表名包含非法字符: ${tableName}`);
-    }
-    return escapeIdent(seg);
-  }).join('.');
-}
+// 标识符转义统一在 @shared/sql-ident（quoteIdent / quoteQualifiedIdent），
+// 本文件不再自行实现，避免出现"同名不同义"的第二份转义逻辑。
 
 /** 校验 batchSize：必须是有限正整数；非法值抛错（0/负数会导致死循环或空批）。 */
 function validateBatchSize(batchSize: number | undefined): number {
@@ -90,7 +62,7 @@ export class SqlExporter {
   export(req: ExportInsertRequest): number {
     const { options, columns, rows } = req;
     const colNames = options.columns ?? columns.map((c) => c.name);
-    const tableIdent = resolveTableIdent(options.tableName);
+    const tableIdent = quoteQualifiedIdent(options.tableName);
     const batchSize = validateBatchSize(options.batchSize);
 
     const header = `-- 由 SQL Studio 导出\n-- 表: ${options.tableName}\n-- 行数: ${rows.length}\n`;
@@ -106,7 +78,7 @@ export class SqlExporter {
         })
         .join(',\n  ');
       chunks.push(
-        `INSERT INTO ${tableIdent} (${colNames.map(escapeIdent).join(', ')}) VALUES\n  ${valueLines};`,
+        `INSERT INTO ${tableIdent} (${colNames.map(quoteIdent).join(', ')}) VALUES\n  ${valueLines};`,
       );
       i += batchSize;
     }

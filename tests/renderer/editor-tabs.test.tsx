@@ -41,10 +41,12 @@ describe('EditorTabs', () => {
     );
     expect(screen.getByText('a.sql')).toBeTruthy();
     expect(screen.getByText('未命名-1')).toBeTruthy();
-    expect(screen.getByText('新建')).toBeTruthy();
-    expect(screen.getByText('打开')).toBeTruthy();
-    expect(screen.getByText('保存')).toBeTruthy();
-    expect(screen.getByText('另存为')).toBeTruthy();
+    // 阶段 1：文件操作并入标签行，改为图标按钮；文字改由 title 提供、aria-label 供无障碍
+    expect(screen.getByTitle('新建脚本')).toBeTruthy();
+    expect(screen.getByTitle('打开脚本')).toBeTruthy();
+    expect(screen.getByTitle('保存 (Ctrl+S)')).toBeTruthy();
+    expect(screen.getByTitle('另存为')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: /^(新建脚本|打开脚本|保存|另存为)$/ })).toHaveLength(4);
   });
 
   it('活跃标签加 active 类；脏标签显示脏标记', () => {
@@ -140,10 +142,10 @@ describe('EditorTabs', () => {
         onSaveAs={onSaveAs}
       />,
     );
-    fireEvent.click(screen.getByText('新建'));
-    fireEvent.click(screen.getByText('打开'));
-    fireEvent.click(screen.getByText('保存'));
-    fireEvent.click(screen.getByText('另存为'));
+    fireEvent.click(screen.getByTitle('新建脚本'));
+    fireEvent.click(screen.getByTitle('打开脚本'));
+    fireEvent.click(screen.getByTitle('保存 (Ctrl+S)'));
+    fireEvent.click(screen.getByTitle('另存为'));
     expect(onNew).toHaveBeenCalled();
     expect(onOpen).toHaveBeenCalled();
     expect(onSave).toHaveBeenCalled();

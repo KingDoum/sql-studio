@@ -135,13 +135,14 @@ describe('App 工作台冒烟', () => {
   it('新建标签 → 编辑变脏 → 保存（另存为路径）', async () => {
     const store = mockFullSqlStudio();
     render(<App />);
-    fireEvent.click(await screen.findByText('新建'));
+    // 阶段 1：标签行内的文件操作是图标按钮，用 title 定位（侧栏也有一个"新建"按钮）
+    fireEvent.click(await screen.findByTitle('新建脚本'));
     const stub = await screen.findByTestId('monaco-stub');
     fireEvent.change(stub, { target: { value: 'SELECT 42;' } });
     // 脏标记出现（tab id 动态生成，直接断言 .tab-dirty 存在）
     await waitFor(() => expect(document.querySelector('.tab-dirty')).toBeTruthy());
     // 保存（无 filePath → 走 prompt 另存为）
-    fireEvent.click(screen.getByText('保存'));
+    fireEvent.click(screen.getByTitle('保存 (Ctrl+S)'));
     await waitFor(() =>
       expect(store['script:save']).toHaveBeenCalledWith(
         expect.objectContaining({ filePath: '/save/script.sql', content: 'SELECT 42;' }),
@@ -158,7 +159,7 @@ describe('App 工作台冒烟', () => {
   it('打开脚本（prompt 路径）→ 标签出现', async () => {
     const store = mockFullSqlStudio();
     render(<App />);
-    fireEvent.click(await screen.findByText('打开'));
+    fireEvent.click(await screen.findByTitle('打开脚本'));
     await waitFor(() => expect(store['script:open']).toHaveBeenCalledWith({ filePath: '/save/script.sql' }));
     const stub = await screen.findByTestId('monaco-stub');
     expect((stub as HTMLTextAreaElement).value).toBe('SELECT 9;');

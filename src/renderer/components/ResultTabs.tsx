@@ -173,7 +173,7 @@ export function ResultTabs() {
             />
           </div>
           <div className="result-status">
-            <span>耗时 {execution.result.totalElapsedMs} ms</span>
+            {/* 阶段 1：耗时不再在此重复展示（全局状态栏已有），这里只保留结果集自身的统计 */}
             <span>共 {execution.result.resultSets.length} 个结果集</span>
             <span>合计{' '}
               {execution.result.resultSets.reduce((n, rs) => n + rs.rows.length, 0)} 行

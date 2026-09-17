@@ -68,15 +68,15 @@ describe('SQL_STUDIO_THEME', () => {
     expect(rules.some((r) => r.token === 'keyword')).toBe(true);
   });
 
-  it('背景色对齐 §7 色板 #16171F', () => {
-    expect(SQL_STUDIO_THEME.colors?.['editor.background']).toBe('#16171F');
+  it('背景色对齐画布令牌 #0F1011', () => {
+    expect(SQL_STUDIO_THEME.colors?.['editor.background']).toBe('#0F1011');
   });
 });
 
 describe('SQL_STUDIO_THEME_LIGHT', () => {
-  it('浅色主题 base=vs，背景 #F5F6FA', () => {
+  it('浅色主题 base=vs，背景 #F7F8F8', () => {
     expect(SQL_STUDIO_THEME_LIGHT.base).toBe('vs');
-    expect(SQL_STUDIO_THEME_LIGHT.colors?.['editor.background']).toBe('#F5F6FA');
+    expect(SQL_STUDIO_THEME_LIGHT.colors?.['editor.background']).toBe('#F7F8F8');
     const rules = SQL_STUDIO_THEME_LIGHT.rules ?? [];
     expect(rules.some((r) => r.token === 'keyword')).toBe(true);
   });
@@ -91,14 +91,14 @@ describe('SQL_STUDIO_THEME_TITANIUM（第三套：钛灰）', () => {
     }
   });
 
-  it('编辑器背景用钛灰表面 #F2F4F7（不是复制 light 的 #F5F6FA）', () => {
-    expect(SQL_STUDIO_THEME_TITANIUM.colors?.['editor.background']).toBe('#F2F4F7');
+  it('编辑器背景用钛灰画布 #EEF0F3（不是复制 light 的 #F7F8F8）', () => {
+    expect(SQL_STUDIO_THEME_TITANIUM.colors?.['editor.background']).toBe('#EEF0F3');
     expect(SQL_STUDIO_THEME_TITANIUM.colors?.['editor.background']).not.toBe(SQL_STUDIO_THEME_LIGHT.colors?.['editor.background']);
   });
 
-  it('关键字主色为石板蓝 #4B6580（与钛灰页面令牌协调）', () => {
+  it('关键字主色为品牌靛紫 #565FB8（三主题同色相）', () => {
     const kw = (SQL_STUDIO_THEME_TITANIUM.rules ?? []).find((r) => r.token === 'keyword');
-    expect(kw?.foreground).toBe('4B6580');
+    expect(kw?.foreground).toBe('565FB8');
   });
 
   it('主题含 SuggestWidget 表面与边框（浮层与页面协调）', () => {

@@ -13,48 +13,67 @@
  * 1. 设计令牌（深色默认）
  * ═══════════════════════════════════════════════ */
 :root {
-  /* ── 颜色角色 ── */
-  --color-bg: #16181d;                 /* 应用底色 */
-  --color-surface: #1d2026;            /* 面板/卡片 */
-  --color-surface-muted: #20242b;      /* 次级表面（工具栏/状态栏） */
-  --color-surface-hover: #262a32;      /* hover 表面 */
-  --color-surface-selected: #28324a;   /* 选中表面（主色软底） */
-  --color-border: #2c313b;             /* 常规边框 */
-  --color-border-strong: #3a404d;      /* 强调边框 */
+  /* ── 颜色角色（阶段 1：Linear 式明度阶梯 + 半透明白边框）──
+   * 深色不是"给浅色套一层黑"：层级靠背景明度阶梯 + 半透明边框表达，
+   * 而不是靠实心深灰边框与阴影。 */
+  --color-bg: #0f1011;                              /* 画布（最深） */
+  --color-surface: #16181a;                         /* 面板/卡片 */
+  --color-surface-muted: #1b1d20;                   /* 次级表面（工具栏/状态栏/表头） */
+  --color-surface-hover: rgba(255, 255, 255, 0.045);  /* hover 表面 */
+  --color-surface-selected: rgba(255, 255, 255, 0.075); /* 选中表面 */
+  --color-border: rgba(255, 255, 255, 0.07);         /* 常规边框（半透明） */
+  --color-border-strong: rgba(255, 255, 255, 0.13);  /* 强调边框 */
 
-  --color-text: #e6e8ef;               /* 主文本 */
-  --color-text-secondary: #9aa0b0;     /* 次要文本 */
-  --color-text-muted: #6b7084;         /* 弱化文本 */
-  --color-text-disabled: #555a6e;      /* 禁用文本 */
+  --color-text: #f7f8f8;               /* 主文本（不用纯白，避免刺眼） */
+  --color-text-secondary: #b8bcc6;     /* 次要文本 */
+  --color-text-muted: #8a8f98;         /* 弱化文本 */
+  --color-text-disabled: #62666d;      /* 禁用文本 */
   --color-text-inverse: #ffffff;       /* 反白（主色按钮上） */
 
-  --color-primary: #4f7fd9;            /* 主品牌色 */
-  --color-primary-hover: #6b95e2;      /* 主色 hover */
-  --color-primary-soft: #24314a;       /* 主色软底 */
+  --color-primary: #5e6ad2;            /* 主品牌色（靛紫，三主题同色相） */
+  --color-primary-hover: #7170ff;      /* 主色 hover */
+  --color-primary-soft: rgba(94, 106, 210, 0.18); /* 主色软底 */
 
-  --color-success: #3ec2a0;
-  --color-success-soft: #16312a;
-  --color-warning: #d9a14a;
-  --color-warning-soft: #3a2e1c;
-  --color-danger: #e06070;
-  --color-danger-soft: #3a1e24;
+  --color-success: #3fb984;
+  --color-success-soft: rgba(63, 185, 132, 0.16);
+  --color-warning: #d9a441;
+  --color-warning-soft: rgba(217, 164, 65, 0.16);
+  --color-danger: #e0555f;
+  --color-danger-soft: rgba(224, 85, 95, 0.16);
   --color-info: #6ba3d6;
-  --color-info-soft: #1f3346;
+  --color-info-soft: rgba(107, 163, 214, 0.16);
 
-  /* ── 圆角 ── */
-  --radius-control: 6px;   /* 按钮/输入框 */
-  --radius-panel: 8px;     /* 面板 */
-  --radius-dialog: 10px;   /* 弹窗 */
+  /* ── 结果网格专用（与表面令牌解耦：斑马纹不该随工具栏亮度变化）── */
+  --color-row-alt: rgba(255, 255, 255, 0.022);       /* 斑马纹行 */
+  --color-row-hover: rgba(255, 255, 255, 0.055);     /* 行 hover */
+  --color-row-selected: rgba(94, 106, 210, 0.22);    /* 选中行（品牌软底） */
 
-  /* ── 阴影（仅浮层） ── */
-  --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.35);
-  --shadow-dialog: 0 18px 48px rgba(0, 0, 0, 0.45);
+  /* ── 圆角（阶段 1 收敛：6/8/10 → 4/6/8，贴近工具而非网页）── */
+  --radius-control: 4px;   /* 按钮/输入框 */
+  --radius-panel: 6px;     /* 面板 */
+  --radius-dialog: 8px;    /* 弹窗 */
+  --radius-pill: 9999px;   /* chip / 标签 */
+
+  /* ── 阴影（仅浮层；暗色下层级靠明度阶梯，不靠阴影）── */
+  --shadow-menu: 0 8px 24px rgba(0, 0, 0, 0.42);
+  --shadow-dialog: 0 18px 48px rgba(0, 0, 0, 0.55);
 
   /* ── 字体 ── */
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', Consolas, 'Courier New', monospace;
   --font-size: 12px;        /* 基础字号（设置面板滑块调节） */
   --font-mono-size: 13px;   /* 编辑器等宽字号 */
+
+  /* ── 行高 / 字重 / 字距（阶段 1 新增：原先完全缺失，密度与层次全靠浏览器默认）──
+   * 行高取 Carbon productive 的 1.29（密集 UI），字距沿用 Carbon 的小字号规则。 */
+  --lh-tight: 1.29;
+  --lh-base: 1.45;
+  --lh-relaxed: 1.6;
+  --fw-normal: 400;
+  --fw-medium: 510;        /* 招牌字重（介于 regular 与 medium 之间） */
+  --fw-semibold: 590;      /* 上限；全系统不使用 700 */
+  --ls-caption: 0.32px;    /* 12px 及以下标签/表头 */
+  --ls-body: 0.16px;       /* 14px 正文 */
 
   /* ── 间距（4px 网格） ── */
   --space-1: 4px;
@@ -125,35 +144,40 @@
 
 /* ── 浅色主题（同一令牌的 light variant） ── */
 [data-theme="light"] {
-  --color-bg: #f5f7fa;
+  --color-bg: #f7f8f8;
   --color-surface: #ffffff;
-  --color-surface-muted: #f8fafc;
-  --color-surface-hover: #f1f5f9;
-  --color-surface-selected: #eaf2ff;
-  --color-border: #e2e8f0;
-  --color-border-strong: #cbd5e1;
+  --color-surface-muted: #f1f2f4;
+  --color-surface-hover: rgba(0, 0, 0, 0.045);
+  --color-surface-selected: rgba(0, 0, 0, 0.075);
+  --color-border: rgba(0, 0, 0, 0.09);
+  --color-border-strong: rgba(0, 0, 0, 0.16);
 
-  --color-text: #172033;
-  --color-text-secondary: #526075;
-  --color-text-muted: #8793a5;
-  --color-text-disabled: #b8c1ce;
+  --color-text: #16181d;
+  --color-text-secondary: #4c5158;
+  --color-text-muted: #8a8f98;
+  --color-text-disabled: #b4b8bf;
   --color-text-inverse: #ffffff;
 
-  --color-primary: #3b6fd8;
-  --color-primary-hover: #315fc0;
-  --color-primary-soft: #eaf2ff;
+  /* 与深色同一色相（靛紫），仅调明度与软底透明度 */
+  --color-primary: #5b62d4;
+  --color-primary-hover: #4a51c4;
+  --color-primary-soft: rgba(91, 98, 212, 0.12);
 
-  --color-success: #23845b;
-  --color-success-soft: #eaf8f0;
+  --color-success: #1f8a5b;
+  --color-success-soft: rgba(31, 138, 91, 0.12);
   --color-warning: #a66a16;
-  --color-warning-soft: #fff6df;
-  --color-danger: #c74747;
-  --color-danger-soft: #fff0f0;
+  --color-warning-soft: rgba(166, 106, 22, 0.12);
+  --color-danger: #c0474f;
+  --color-danger-soft: rgba(192, 71, 79, 0.12);
   --color-info: #3574a8;
-  --color-info-soft: #edf6ff;
+  --color-info-soft: rgba(53, 116, 168, 0.12);
+
+  --color-row-alt: rgba(0, 0, 0, 0.018);
+  --color-row-hover: rgba(0, 0, 0, 0.045);
+  --color-row-selected: rgba(91, 98, 212, 0.14);
 
   --shadow-menu: 0 8px 24px rgba(23, 32, 51, 0.12);
-  --shadow-dialog: 0 18px 48px rgba(23, 32, 51, 0.18);
+  --shadow-dialog: 0 18px 48px rgba(23, 32, 51, 0.2);
 }
 
 /* ── 钛灰主题（第三套，苹果式克制中性灰，独立令牌；2026-09-01 外观升级新增） ──
@@ -161,35 +185,40 @@
  * 不使用渐变、磨砂玻璃、backdrop-filter、glow、bokeh 或大面积透明。
  */
 [data-theme="titanium"] {
-  --color-bg: #e8ebef;
-  --color-surface: #f7f8fa;
-  --color-surface-muted: #eef1f4;
-  --color-surface-hover: #e1e6eb;
-  --color-surface-selected: #dde7f3;
-  --color-border: #cfd6de;
-  --color-border-strong: #b7c0cb;
+  --color-bg: #eef0f3;
+  --color-surface: #f8f9fb;
+  --color-surface-muted: #e9ecf0;
+  --color-surface-hover: rgba(20, 26, 34, 0.05);
+  --color-surface-selected: rgba(20, 26, 34, 0.09);
+  --color-border: rgba(20, 26, 34, 0.1);
+  --color-border-strong: rgba(20, 26, 34, 0.18);
 
-  --color-text: #20252b;
-  --color-text-secondary: #59636f;
+  --color-text: #1c2026;
+  --color-text-secondary: #545c66;
   --color-text-muted: #7b8591;
-  --color-text-disabled: #a9b1bb;
+  --color-text-disabled: #aab1ba;
   --color-text-inverse: #ffffff;
 
-  --color-primary: #4b6580;
-  --color-primary-hover: #3f5870;
-  --color-primary-soft: #dde7f3;
+  /* 同一靛紫色相，按灰底降低饱和以免刺眼 */
+  --color-primary: #565fb8;
+  --color-primary-hover: #474fa3;
+  --color-primary-soft: rgba(86, 95, 184, 0.13);
 
   --color-success: #2f7d5f;
-  --color-success-soft: #e2f1ea;
+  --color-success-soft: rgba(47, 125, 95, 0.13);
   --color-warning: #9a6f1f;
-  --color-warning-soft: #f5eeda;
+  --color-warning-soft: rgba(154, 111, 31, 0.13);
   --color-danger: #b5534e;
-  --color-danger-soft: #f7e7e5;
+  --color-danger-soft: rgba(181, 83, 78, 0.13);
   --color-info: #3d6a94;
-  --color-info-soft: #e4eef6;
+  --color-info-soft: rgba(61, 106, 148, 0.13);
+
+  --color-row-alt: rgba(20, 26, 34, 0.022);
+  --color-row-hover: rgba(20, 26, 34, 0.055);
+  --color-row-selected: rgba(86, 95, 184, 0.16);
 
   --shadow-menu: 0 8px 24px rgba(32, 37, 43, 0.14);
-  --shadow-dialog: 0 18px 48px rgba(32, 37, 43, 0.2);
+  --shadow-dialog: 0 18px 48px rgba(32, 37, 43, 0.22);
 }
 
 /* ═══════════════════════════════════════════════
@@ -1258,9 +1287,15 @@ input:focus, select:focus, textarea:focus {
 /* ═══════════════════════════════════════════════
  * 7. 标签栏（EditorTabs）
  * ═══════════════════════════════════════════════ */
+/* 阶段 1：标签行与文件操作合并为单行。
+ * 原先是两层（标签行 + 文件操作行），其中文件操作行右侧约 70% 全是空白，
+ * 白白吃掉约 26px 垂直空间。文件操作改为图标按钮 + tooltip（title/aria-label 保留）。 */
 .tabs-bar {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 10px;
+  min-height: 34px;
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
@@ -1268,36 +1303,44 @@ input:focus, select:focus, textarea:focus {
 
 .tabs-actions {
   display: flex;
-  gap: 4px;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--color-border);
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  padding-left: 8px;
+  border-left: 1px solid var(--color-border);
 }
 
-.tabs-actions button {
+.tabs-action-btn {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  padding: 4px 10px;
-  border: 1px solid var(--color-border);
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
   border-radius: var(--radius-control);
   background: transparent;
-  color: var(--color-text);
+  color: var(--color-text-secondary);
   cursor: pointer;
-  transition: background var(--transition-fast) ease, border-color var(--transition-fast) ease, color var(--transition-fast) ease;
+  transition: background var(--transition-fast) ease, color var(--transition-fast) ease;
 }
 
-.tabs-actions button:hover {
+.tabs-action-btn:hover {
   background: var(--color-surface-hover);
-  border-color: var(--color-primary);
-  color: var(--color-primary);
+  color: var(--color-text);
+}
+
+.tabs-action-btn:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
 }
 
 .tabs-scroll {
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 4px 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 4px 0;
   overflow-x: auto;
 }
 
@@ -1982,10 +2025,11 @@ input:focus, select:focus, textarea:focus {
 .grid-header-cell {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   padding: 4px 8px;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
   color: var(--color-text);
   cursor: pointer;
   transition: background var(--transition-fast) ease;
@@ -2026,10 +2070,12 @@ input:focus, select:focus, textarea:focus {
   white-space: nowrap;
 }
 
+/* 列注释/类型：降到 10px + 弱化色 + 微字距，让列名独占视觉重心（阶段 1 表头降噪） */
 .grid-col-meta {
-  font-size: 9px;
-  color: var(--color-text-secondary);
-  font-weight: 400;
+  font-size: 10px;
+  color: var(--color-text-muted);
+  font-weight: var(--fw-normal);
+  letter-spacing: var(--ls-caption);
   white-space: nowrap;
 }
 
@@ -2084,12 +2130,14 @@ input:focus, select:focus, textarea:focus {
   height: 24px;
 }
 
+/* 斑马纹与行 hover 用网格专用令牌（阶段 1：与工具栏表面解耦，
+ * 否则调整工具栏亮度会连带改变斑马纹强度） */
 .grid-row:nth-child(even) {
-  background: var(--color-surface-muted);
+  background: var(--color-row-alt);
 }
 
 .grid-row:hover {
-  background: var(--color-surface-hover);
+  background: var(--color-row-hover);
 }
 
 .grid-cell {
@@ -2110,6 +2158,16 @@ input:focus, select:focus, textarea:focus {
   color: var(--color-text-muted);
   font-style: italic;
   opacity: 0.6;
+}
+
+/* 数值列右对齐 + 等宽数字（阶段 1：数据表扫描惯例，由 ResultGrid 按列类型加 num-cell） */
+.grid-header-cell.num-cell {
+  justify-content: flex-end;
+}
+
+.grid-cell.num-cell {
+  justify-content: flex-end;
+  font-variant-numeric: tabular-nums;
 }
 
 .grid-empty {
@@ -2252,7 +2310,7 @@ input:focus, select:focus, textarea:focus {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.58);
   display: flex;
   align-items: center;
   justify-content: center;

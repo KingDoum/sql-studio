@@ -236,4 +236,62 @@ describe('QueryService.run', () => {
     expect(String(cell)).not.toContain('Z');
     expect(String(cell)).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/);
   });
+
+  it('BIT 列归一化为数值（BIT(1) → 0/1，不再显示「[二进制 1 字节]」）', async () => {
+    const svc = new QueryService(async () => [
+      {
+        rows: [{ is_active: Buffer.from([0x01]), is_deleted: Buffer.from([0x00]) }],
+        fields: [
+          { name: 'is_active', type: 16, table: 't', orgTable: 't' },   // BIT
+          { name: 'is_deleted', type: 16, table: 't', orgTable: 't' },  // BIT
+        ],
+        affectedRows: 0,
+        isWrite: false,
+      },
+    ]);
+    const res = await svc.run({ connectionId: 'c1', sql: 'SELECT * FROM t' });
+    expect(res.resultSets[0].columns.map((c) => c.type)).toEqual(['bit', 'bit']);
+    expect(res.resultSets[0].rows[0]).toEqual([1, 0]);
+  });
+
+  it('BIT 多字节按大端归一到整数（BIT(16) 0x0102 → 258）', async () => {
+    const svc = new QueryService(async () => [
+      {
+        rows: [{ flags: Buffer.from([0x01, 0x02]) }],
+        fields: [{ name: 'flags', type: 16, table: 't', orgTable: 't' }],
+        affectedRows: 0,
+        isWrite: false,
+      },
+    ]);
+    const res = await svc.run({ connectionId: 'c1', sql: 'SELECT * FROM t' });
+    expect(res.resultSets[0].rows[0][0]).toBe(258);
+  });
+
+  it('BIT 超过 48bit 时保持二进制（不做有损数值化）', async () => {
+    const svc = new QueryService(async () => [
+      {
+        rows: [{ big_bit: Buffer.from([1, 2, 3, 4, 5, 6, 7]) }], // 56bit
+        fields: [{ name: 'big_bit', type: 16, table: 't', orgTable: 't' }],
+        affectedRows: 0,
+        isWrite: false,
+      },
+    ]);
+    const res = await svc.run({ connectionId: 'c1', sql: 'SELECT * FROM t' });
+    expect(res.resultSets[0].rows[0][0]).toBeInstanceOf(Uint8Array);
+  });
+
+  it('非 BIT 二进制列仍保持 Uint8Array（回归保护）', async () => {
+    const svc = new QueryService(async () => [
+      {
+        rows: [{ payload: Buffer.from([0xab, 0xcd]) }],
+        fields: [{ name: 'payload', type: 252, table: 't', orgTable: 't' }], // BLOB
+        affectedRows: 0,
+        isWrite: false,
+      },
+    ]);
+    const res = await svc.run({ connectionId: 'c1', sql: 'SELECT * FROM t' });
+    const cell = res.resultSets[0].rows[0][0];
+    expect(cell).toBeInstanceOf(Uint8Array);
+    expect(Array.from(cell as Uint8Array)).toEqual([0xab, 0xcd]);
+  });
 });

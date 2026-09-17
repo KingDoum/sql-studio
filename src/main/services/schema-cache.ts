@@ -13,6 +13,8 @@
  */
 
 import type { ColumnMeta, TableMeta } from '@shared/types';
+import { quoteIdent } from '@shared/sql-ident';
+import { columnTypeFromRaw } from '@shared/column-type';
 
 /** executor：执行单条只读 SQL，返回行（每行字段不定）。 */
 export type SchemaExecutor = (sql: string) => Promise<Record<string, unknown>[]>;
@@ -28,39 +30,16 @@ interface Cache {
   ddls: Map<string, string | null>;
 }
 
-/** 反引号转义（防 SQL 注入）。 */
-function esc(name: string): string {
-  return name.replace(/`/g, '``');
-}
-
-/** 常用只读查询 SQL（集中常量）。 */
+/** 常用只读查询 SQL（集中常量）。标识符一律经 quoteIdent（@shared/sql-ident）转义。 */
 export const SCHEMA_SQL = {
   listDatabases: 'SHOW DATABASES',
-  listTables: (db: string) => `SHOW FULL TABLES FROM \`${esc(db)}\``,
-  getColumns: (db: string, table: string) => `SHOW FULL COLUMNS FROM \`${esc(table)}\` FROM \`${esc(db)}\``,
-  getDdl: (db: string, table: string) => `SHOW CREATE TABLE \`${esc(db)}\`.\`${esc(table)}\``,
+  listTables: (db: string) => `SHOW FULL TABLES FROM ${quoteIdent(db)}`,
+  getColumns: (db: string, table: string) => `SHOW FULL COLUMNS FROM ${quoteIdent(table)} FROM ${quoteIdent(db)}`,
+  getDdl: (db: string, table: string) => `SHOW CREATE TABLE ${quoteIdent(db)}.${quoteIdent(table)}`,
 } as const;
 
-/** 把 mysql2 原始类型名（如 int(11)）粗略归一为 ColumnType。 */
-function normalizeType(raw: string): ColumnMeta['type'] {
-  const t = raw.toLowerCase();
-  if (t.includes('int')) return t.includes('big') ? 'bigint' : 'int';
-  if (t.includes('decimal') || t.includes('numeric')) return 'decimal';
-  if (t.includes('float')) return 'float';
-  if (t.includes('double')) return 'double';
-  if (t.includes('varchar')) return 'varchar';
-  if (t.includes('char') && !t.includes('varchar')) return 'char';
-  if (t.includes('text')) return 'text';
-  if (t.includes('blob')) return 'blob';
-  if (t.includes('datetime')) return 'datetime';
-  if (t.includes('timestamp')) return 'timestamp';
-  if (t.includes('date')) return 'date';
-  if (t.includes('time')) return 'time';
-  if (t.includes('json')) return 'json';
-  if (t.includes('bool')) return 'boolean';
-  if (t.includes('enum')) return 'enum';
-  return raw;
-}
+// 列类型归一化统一在 @shared/column-type（columnTypeFromRaw / columnTypeFromCode），
+// 本文件不再自行实现，避免与结果集表头的类型名漂移。
 
 export class SchemaCache {
   private readonly executor: SchemaExecutor;
@@ -116,7 +95,7 @@ export class SchemaCache {
       const keyVal = get('Key') ?? '';
       return {
         name: field,
-        type: normalizeType(type),
+        type: columnTypeFromRaw(type),
         nullable: nullVal ? nullVal.toUpperCase() === 'YES' : true,
         isPrimary: keyVal.toUpperCase() === 'PRI',
         isUnique: keyVal.toUpperCase() === 'UNI',

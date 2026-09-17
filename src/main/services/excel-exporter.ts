@@ -4,11 +4,16 @@
  * 使用 ExcelJS 生成 .xlsx：表头深色底（#4472C4）/白字、冻结首行 A2、自动列宽。
  * 对齐旧项目 exporter.py 的样式要求。支持可选导出元信息（连接/时间）作为附加工作表或首行。
  *
+ * 取值约定：NULL→空串；Uint8Array→`[BINARY]` 占位；数值型列（decimal/bigint…）的
+ * 字符串值在**精度安全**时转为真数值（便于 Excel 求和），超 15 位有效数字或超安全
+ * 整数范围则保持文本，避免静默丢精度。
+ *
  * 依赖注入：构造时注入 workbook 工厂（默认 ExcelJS），便于单测验证生成逻辑。
  */
 
 import ExcelJS from 'exceljs';
 import type { CellValue, ColumnMeta, ExportExcelRequest } from '@shared/types';
+import { isNumericColumnType } from '@shared/column-type';
 
 /** workbook 工厂（便于测试注入或自定义）。 */
 export type WorkbookFactory = () => ExcelJS.Workbook;
@@ -21,11 +26,44 @@ const DEFAULT_HEADER_FILL: ExcelJS.Fill = {
 const DEFAULT_HEADER_FONT: Partial<ExcelJS.Font> = { bold: true, color: { argb: 'FFFFFFFF' } };
 
 /** 单元格值转 Excel 可写值（NULL→空串，Uint8Array→[BINARY]）。 */
-function toExcelValue(v: CellValue): ExcelJS.CellValue {
+function toExcelValue(v: CellValue, columnType?: string): ExcelJS.CellValue {
   if (v === null || v === undefined) return '';
   if (v instanceof Uint8Array) return '[BINARY]';
   if (typeof v === 'boolean') return v ? 'true' : 'false';
+  // 数值型列的字符串值（mysql2 的 DECIMAL 恒为字符串，以保证精度）转为真数值，
+  // 否则 Excel 里是文本格式：左对齐、绿三角、无法直接求和（金额列尤其明显）。
+  if (typeof v === 'string' && isNumericColumnType(columnType)) {
+    const n = toSafeExcelNumber(v);
+    if (n !== null) return n;
+  }
   return v as ExcelJS.CellValue;
+}
+
+/** 纯十进制数字串（刻意不接受科学计数法、十六进制、千分位）。 */
+const PLAIN_NUMBER_RE = /^-?\d+(?:\.\d+)?$/;
+
+/** 十进制字符串的有效数字位数（忽略符号、小数点、前导零与小数尾部零）。 */
+function significantDigits(s: string): number {
+  const digits = s.replace(/^[+-]/, '').replace('.', '').replace(/^0+/, '');
+  const trimmed = digits.replace(/0+$/, '');
+  return trimmed.length === 0 ? 1 : trimmed.length;
+}
+
+/**
+ * 数值字符串 → number；不安全时返回 null（调用方保持文本）。
+ *
+ * Excel 只保证 **15 位有效数字**，整数还受 IEEE754 安全整数范围约束。
+ * 超出任一上限时转数值会静默丢精度（如 9007199254740993 → …992），
+ * 因此宁可用文本，也不写出错误的数字。
+ */
+function toSafeExcelNumber(s: string): number | null {
+  if (!PLAIN_NUMBER_RE.test(s)) return null;
+  const n = Number(s);
+  if (!Number.isFinite(n)) return null;
+  // 小数：按有效数字位数判断（15 位内 Excel 可精确呈现）
+  if (s.includes('.')) return significantDigits(s) <= 15 ? n : null;
+  // 整数：必须落在安全整数范围内才精确
+  return Number.isSafeInteger(n) ? n : null;
 }
 
 export class ExcelExporter {
@@ -79,9 +117,10 @@ export class ExcelExporter {
       const batch = rows.slice(i, i + BATCH);
       for (const row of batch) {
         const obj: Record<string, ExcelJS.CellValue> = {};
-        columns.forEach((_c, colIdx) => {
+        columns.forEach((col, colIdx) => {
           // 与 ws.columns 的 key 保持一致（列下标），保证同名列各占一列、值不互相覆盖
-          obj[`col_${colIdx}`] = toExcelValue(row[colIdx]);
+          // 传入列类型：数值型列的字符串值需转成真数值（见 toExcelValue）
+          obj[`col_${colIdx}`] = toExcelValue(row[colIdx], col.type);
         });
         ws.addRow(obj);
       }

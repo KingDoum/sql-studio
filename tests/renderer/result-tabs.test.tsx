@@ -77,7 +77,8 @@ describe('ResultTabs', () => {
       },
     });
     render(<ResultTabs />);
-    expect(screen.getByText(/12 ms/)).toBeTruthy();
+    // 阶段 1：耗时只在全局状态栏展示，结果区状态栏不再重复
+    expect(screen.getByText(/共 1 个结果集/)).toBeTruthy();
     expect(screen.getByText('1')).toBeTruthy();
   });
 
